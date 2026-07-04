@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Build &middot; Hack &middot; Defend &middot; Create</strong><br>
-  <em>Security. Privacy. Productivity. All in One.</em>
+  <em>Security. Coding. AI agents. One stable image.</em>
 </p>
 
 <p align="center">
@@ -25,10 +25,12 @@ AI coding agents and local LLM runtimes in one step. Built entirely with Debian
 `live-build`, and the whole build lives in this repository so the image is fully
 reproducible from source.
 
-> **Status:** pre-release. The smoke ISO has been built and boot-tested in a UEFI
-> virtual machine: it reaches the KDE Plasma desktop with the Calamares installer
-> present. A full-featured build is in progress, and the first public ISO has not
-> shipped yet. The build specification is [`SPEC.md`](SPEC.md).
+> **Status:** the full amd64 ISO is built and boot-verified in a UEFI virtual
+> machine. It reaches the KDE Plasma desktop with the Corvid wallpaper, the curated
+> security toolset, the `corvid-ai-setup` AI-agent installer, and the branded
+> Calamares installer all present. The first public release is being published; the
+> **arm64 / Raspberry Pi 5** variant is on the roadmap. The build specification is
+> [`SPEC.md`](SPEC.md).
 
 ---
 
@@ -113,11 +115,12 @@ are clean and repeatable. Full detail is in [`docs/ARCHITECTURE.md`](docs/ARCHIT
 Published images and checksums:
 
 - **GitHub Releases:** [github.com/CamoRageaholic1/corvid-os/releases](https://github.com/CamoRageaholic1/corvid-os/releases)
-- **Mirror (Google Drive):** _link added when an image is published_
+- **Download (Google Drive):** `corvid-amd64.iso` (amd64, ~5.0 GB, UEFI) in the [CORVID OS folder](https://drive.google.com/drive/folders/1Ji46vTjchlES9AFR5WtHrAMTgDnzU_Ed)
 
 Corvid images are **UEFI-bootable**: copy the `.iso` onto a Ventoy stick (no
 flashing needed) or write it to a USB drive, and boot the target in UEFI mode.
-Verify the download with `shasum -a 256 corvid-amd64.iso`.
+Verify the download with `shasum -a 256 corvid-amd64.iso`. It should print
+`7970c43277634016354e06d9a4de1fe08b26b824e645996d73783778b4ed8beb`.
 
 ## Build quickstart
 
