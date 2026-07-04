@@ -1,0 +1,168 @@
+#!/bin/sh
+# ============================================================================
+# 0400-devstack-config.hook.chroot  —  Corvid OS dev stack config
+# ----------------------------------------------------------------------------
+# live-build CHROOT hook. Runs INSIDE the chroot AFTER the package lists have
+# been installed, on the build VM (never on this macOS host — SPEC §4 rule 2).
+#
+# Installs the pieces of the dev stack that are NOT in the base repos and wires
+# up runtime config:
+#   1. Rust toolchain via rustup (system-wide under /opt)
+#   2. VS Code ('code') from Microsoft's apt repo + signing key
+#   3. Docker: enable the service + add the default 'corvid' user to 'docker'
+#   4. distrobox: verify backend + set up rootless subuid/subgid ranges
+#   5. Neovim as the system default editor via update-alternatives
+#
+# Failure policy: `set -e` so REAL errors abort the build, BUT every network-
+# dependent step is wrapped so a transient fetch failure (offline mirror, MS
+# repo hiccup) only WARNS and continues — a flaky network must not brick a
+# multi-GB build. Commands inside `if` conditions are exempt from `set -e`,
+# which is how the guards below stay graceful.
+# ============================================================================
+set -e
+
+export DEBIAN_FRONTEND=noninteractive
+
+# The default account Calamares/the live session creates for this distro.
+CORVID_USER="corvid"
+
+warn() { echo "[0400-devstack][WARN] $*" >&2; }
+info() { echo "[0400-devstack] $*"; }
+
+# ---------------------------------------------------------------------------
+# 1. Rust toolchain — rustup, installed SYSTEM-WIDE under /opt
+# ---------------------------------------------------------------------------
+# Rust is not in the Ubuntu base in a rustup-managed form, so we bootstrap it
+# here. We install the toolchain into /opt (RUSTUP_HOME=/opt/rust,
+# CARGO_HOME=/opt/cargo) so it is shared by every user, then expose the proxies
+# on PATH via /etc/profile.d + /usr/local/bin symlinks. Per-user `cargo install`
+# still lands in each user's ~/.cargo (we deliberately do NOT force CARGO_HOME
+# in profile.d — see /etc/skel dotfiles).
+RUSTUP_HOME=/opt/rust
+CARGO_HOME=/opt/cargo
+export RUSTUP_HOME CARGO_HOME
+
+info "Installing Rust (rustup) system-wide into ${RUSTUP_HOME} / ${CARGO_HOME} ..."
+if command -v rustc >/dev/null 2>&1 && [ -x "${CARGO_HOME}/bin/cargo" ]; then
+    info "Rust already present — skipping."
+elif rustup_init="$(mktemp)" && curl -fsSL --proto '=https' --tlsv1.2 https://sh.rustup.rs -o "${rustup_init}"; then
+    # -y unattended; --no-modify-path (we manage PATH ourselves via profile.d).
+    if sh "${rustup_init}" -y --no-modify-path --profile default --default-toolchain stable; then
+        info "rustup install complete."
+    else
+        warn "rustup installer returned non-zero; Rust may be incomplete."
+    fi
+    rm -f "${rustup_init}"
+
+    # Expose cargo/rustc/rustup on the default PATH for every login shell.
+    cat > /etc/profile.d/00-rust.sh <<'EOF'
+# Corvid OS: system-wide Rust toolchain (installed under /opt by hook 0400).
+export RUSTUP_HOME=/opt/rust
+case ":$PATH:" in
+    *:/opt/cargo/bin:*) ;;
+    *) export PATH="$PATH:/opt/cargo/bin" ;;
+esac
+EOF
+    chmod 0644 /etc/profile.d/00-rust.sh
+
+    # Belt-and-suspenders for non-login / one-shot shells: symlink the proxies.
+    for b in cargo rustc rustup rustfmt rust-gdb rust-lldb cargo-clippy cargo-fmt clippy-driver; do
+        if [ -x "${CARGO_HOME}/bin/${b}" ]; then
+            ln -sf "${CARGO_HOME}/bin/${b}" "/usr/local/bin/${b}"
+        fi
+    done
+
+    # Make the toolchain world-readable/executable so every user can use it.
+    chmod -R a+rX "${RUSTUP_HOME}" "${CARGO_HOME}" 2>/dev/null || true
+else
+    rm -f "${rustup_init}" 2>/dev/null || true
+    warn "Could not download rustup (offline?). Skipping Rust; install later with: curl https://sh.rustup.rs | sh"
+fi
+
+# ---------------------------------------------------------------------------
+# 2. Visual Studio Code — Microsoft apt repo + signing key, then install 'code'
+# ---------------------------------------------------------------------------
+# Uses the modern signed-by keyring convention (no apt-key). Every network step
+# is guarded so a repo/key hiccup degrades to a warning instead of aborting.
+info "Configuring Microsoft VS Code apt repository ..."
+MS_KEYRING=/etc/apt/keyrings/packages.microsoft.gpg
+install -d -m 0755 /etc/apt/keyrings
+ms_key_tmp="$(mktemp)"
+if curl -fsSL https://packages.microsoft.com/keys/microsoft.asc -o "${ms_key_tmp}"; then
+    if gpg --dearmor --yes -o "${MS_KEYRING}" "${ms_key_tmp}"; then
+        chmod 0644 "${MS_KEYRING}"
+        printf 'deb [arch=amd64,arm64,armhf signed-by=%s] https://packages.microsoft.com/repos/code stable main\n' \
+            "${MS_KEYRING}" > /etc/apt/sources.list.d/vscode.list
+        if apt-get update; then
+            if apt-get install -y code; then
+                info "VS Code installed."
+            else
+                warn "apt could not install 'code'; VS Code skipped."
+            fi
+        else
+            warn "apt-get update failed after adding the MS repo; VS Code skipped."
+        fi
+    else
+        warn "Failed to dearmor the Microsoft signing key; VS Code skipped."
+    fi
+else
+    warn "Could not download the Microsoft signing key (offline?); VS Code skipped."
+fi
+rm -f "${ms_key_tmp}"
+
+# ---------------------------------------------------------------------------
+# 3. Docker — enable the service, create the group, add the default user
+# ---------------------------------------------------------------------------
+info "Enabling Docker and wiring up the 'docker' group ..."
+groupadd -f docker
+# `systemctl enable` is symlink-only and chroot-safe (unlike `start`).
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl enable docker.service 2>/dev/null || warn "Could not enable docker.service now (will still be enabled on the installed system if the unit exists)."
+    systemctl enable containerd.service 2>/dev/null || true
+    systemctl enable docker.socket 2>/dev/null || true
+fi
+if id "${CORVID_USER}" >/dev/null 2>&1; then
+    usermod -aG docker "${CORVID_USER}"
+    info "Added ${CORVID_USER} to the docker group."
+else
+    warn "User '${CORVID_USER}' not present at build time; Calamares/first-boot must add the created user to 'docker'."
+fi
+
+# ---------------------------------------------------------------------------
+# 4. distrobox — verify a container backend + set up rootless id-mapping
+# ---------------------------------------------------------------------------
+# distrobox itself installs from devstack.list.chroot. Nothing to compile; we
+# just confirm a backend exists and ensure the subuid/subgid ranges rootless
+# podman needs are present for the default user.
+info "Checking distrobox and its container backend ..."
+if command -v distrobox >/dev/null 2>&1; then
+    if command -v podman >/dev/null 2>&1; then
+        info "distrobox present; rootless podman backend available (distrobox default)."
+    elif command -v docker >/dev/null 2>&1; then
+        info "distrobox present; docker backend available."
+    else
+        warn "distrobox present but neither podman nor docker was found."
+    fi
+    if id "${CORVID_USER}" >/dev/null 2>&1; then
+        grep -q "^${CORVID_USER}:" /etc/subuid 2>/dev/null || echo "${CORVID_USER}:100000:65536" >> /etc/subuid
+        grep -q "^${CORVID_USER}:" /etc/subgid 2>/dev/null || echo "${CORVID_USER}:100000:65536" >> /etc/subgid
+    fi
+else
+    warn "distrobox not installed (expected from devstack.list.chroot)."
+fi
+
+# ---------------------------------------------------------------------------
+# 5. Neovim as the system default editor (update-alternatives)
+# ---------------------------------------------------------------------------
+info "Setting Neovim as the default editor ..."
+if [ -x /usr/bin/nvim ]; then
+    update-alternatives --install /usr/bin/editor editor /usr/bin/nvim 100
+    update-alternatives --set editor /usr/bin/nvim || warn "Could not set the 'editor' alternative to nvim."
+    # Also point 'vi'/'vim' at nvim (low priority) so muscle memory lands right.
+    update-alternatives --install /usr/bin/vi  vi  /usr/bin/nvim 90 2>/dev/null || true
+    update-alternatives --install /usr/bin/vim vim /usr/bin/nvim 90 2>/dev/null || true
+else
+    warn "/usr/bin/nvim not found (expected from devstack.list.chroot); default editor unchanged."
+fi
+
+info "devstack configuration hook complete."

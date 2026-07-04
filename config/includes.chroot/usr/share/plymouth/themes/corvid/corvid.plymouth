@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Corvid OS
+Description=Corvid OS dark boot splash (raven wordmark, LUKS-aware)
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/corvid
+ScriptFile=/usr/share/plymouth/themes/corvid/corvid.script

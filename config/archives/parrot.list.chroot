@@ -1,0 +1,27 @@
+# Corvid OS -- Parrot security repository (layered over the Kubuntu 24.04 base)
+# ---------------------------------------------------------------------------
+# Adds Parrot's package archive so the security tooling
+# (parrot-tools-full and friends, selected in config/package-lists/security.list.chroot)
+# can be pulled in. It is STRICTLY GOVERNED by the APT pinning in
+# parrot.pref.chroot -- Parrot is pinned LOW so it can NEVER override the
+# Ubuntu base (glibc/libc6/python3/systemd/core libs). Read that file too.
+#
+# Suite name: "lory" == Parrot 6 "Lorikeet" (current stable rolling, Debian
+#   12/bookworm-based). Verified 2026-07-03 against
+#   https://deb.parrot.sh/parrot/dists/  and the lory Release file
+#   (Origin: Parrot, Label: "Parrot 6 Lorikeet Repository", Suite: parrot6).
+#   Alternatives if this needs to move: "parrot" (generic rolling symlink)
+#   or "echo" (Parrot 7, Debian 13/trixie-based -- newer, do NOT switch to it
+#   without re-checking the pin, glibc skew widens).
+#
+# Transport: HTTPS. apt verifies the Release signature with parrot.key.chroot
+#   regardless of transport, but HTTPS needs ca-certificates present when the
+#   repo is first hit during the chroot stage. auto/config pulls
+#   ca-certificates in via --debootstrap-options so that is handled. If the
+#   build ever fails on TLS here, switch the URL to http:// (still secure --
+#   authenticity comes from the GPG signature, not the transport).
+#
+# GPG key: parrot.key.chroot  (RSA4096, fpr B711 8223 4655 2E4D 92DA 02DF
+#   7A82 86AF 0E81 EE4A, "Parrot Project (2024-2026)", expires 2028-11-03).
+
+deb https://deb.parrot.sh/parrot/ lory main contrib non-free non-free-firmware

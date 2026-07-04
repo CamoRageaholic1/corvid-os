@@ -1,0 +1,63 @@
+# =============================================================================
+# Corvid OS — installer + partitioning + boot-branding packages
+# =============================================================================
+# Everything the Calamares installer, LUKS full-disk encryption, partitioning,
+# GRUB (BIOS+UEFI), and the Plymouth boot splash need. One package per line;
+# live-build installs these into the live/ISO chroot.
+#
+# Pinning note: these come from the Ubuntu/noble base per the
+# APT priority rules — none of them should pull from the Parrot repo.
+# -----------------------------------------------------------------------------
+
+# --- Calamares installer + Qt/QML runtime it needs ---------------------------
+# (calamares pulls most of its Qt/QML deps automatically; the explicit qml
+#  modules below cover the slideshow. Our /etc/calamares config is installed by
+#  the 0600 hook and overrides any distro-default calamares settings package.)
+calamares
+libqt5svg5
+qml-module-qtquick2
+qml-module-qtquick-controls2
+qml-module-qtquick-layouts
+qml-module-qtquick-window2
+
+# --- Full-disk encryption (LUKS) ---------------------------------------------
+cryptsetup
+cryptsetup-initramfs
+cryptsetup-bin
+
+# --- Partitioning tools ------------------------------------------------------
+# (kpmcore, the partitioning backend Calamares uses, is pulled in as a
+#  dependency of calamares — no need to name its library package here.)
+parted
+gparted
+dosfstools
+e2fsprogs
+btrfs-progs
+xfsprogs
+ntfs-3g
+mtools
+gdisk
+
+# --- Bootloader: GRUB for both UEFI and legacy BIOS --------------------------
+# (No *-signed / shim packages: Secure Boot is deferred in v1 per SPEC §2.
+#  The MOK-enrollment path is documented in docs/ROADMAP.md.)
+grub-efi-amd64
+grub-efi-amd64-bin
+grub-pc-bin
+grub2-common
+grub-common
+efibootmgr
+os-prober
+
+# --- Filesystem / image plumbing used by the offline unpackfs step -----------
+squashfs-tools
+rsync
+
+# --- Privilege escalation for the on-desktop "Install Corvid OS" launcher ----
+polkitd
+pkexec
+
+# --- Plymouth boot splash (branding) --------
+plymouth
+plymouth-label
+plymouth-themes

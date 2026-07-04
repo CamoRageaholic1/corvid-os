@@ -1,0 +1,175 @@
+#!/bin/sh
+# =============================================================================
+# 0500-czd-tools.hook.chroot  --  Corvid OS  (CZD-Tools integration)
+# -----------------------------------------------------------------------------
+# Runs INSIDE the live-build chroot, as root, during `lb build`. It bakes the
+# CZD-Tools security-tool launcher into the image WITHOUT vendoring a copy of the
+# suite into this git repo (SPEC rule 3). The payload is fetched at build time.
+#
+# What this hook does, in order:
+#   1. Install the runtime dependencies the launcher needs.
+#   2. Obtain the CZD-Tools payload into /opt/czd-tools
+#        - preferred: git clone from GitHub (CamoRageaholic1)
+#        - fallback:  copy from a locally-staged source tree
+#   3. Install a `czd` launcher wrapper on PATH (/usr/local/bin/czd).
+#   4. Drop a Plasma (.desktop) menu entry so it appears in the app launcher.
+#
+# IMPORTANT INVESTIGATION NOTE (read before editing the URL below):
+#   As of this writing the repo `CamoRageaholic1/CZD-Tools` DOES NOT EXIST on
+#   GitHub. The suite currently lives ONLY on David's workstation at
+#   `~/CZD-Tools/` and is not itself a git repo. The only related public repo is
+#   `CamoRageaholic1/CZD_Port_Scanner`, which is a different, single-purpose tool.
+#   => ACTION REQUIRED: either publish the suite as CamoRageaholic1/CZD-Tools
+#      (then this clone "just works"), or stage a local copy for the build VM and
+#      rely on the fallback path below. The hook is written to survive either way
+#      and to degrade gracefully (warn, do not abort the ISO) if neither is present.
+#
+# About the launcher itself (learned by inspecting CZD-Tools_v1.3.2.py):
+#   - Single-file Python 3 program. Imports only the stdlib PLUS the optional
+#     `pystyle` package (used purely for the colored TUI; it has a built-in
+#     no-color fallback, so pystyle is a nice-to-have, not a hard requirement).
+#   - There is NO top-level requirements.txt. The launcher installs each of its
+#     ~22 tools ON DEMAND at runtime via its own multi-backend installer engine
+#     (apt / pip / pipx / git / brew / apk / dnf / pacman). That is why we make
+#     sure git + pip + pipx exist on the image: the launcher shells out to them.
+#   - It is RELOCATABLE. Internally it sets ROOT = ~/CZD-Tools (derived from $HOME,
+#     not from the script's own location) and keeps writable per-user state there
+#     (check.json, theme.json, and the on-demand `tools/` clones). That means the
+#     read-only PROGRAM can live at /opt/czd-tools (system, shared) while each
+#     user's mutable state lands in their own ~/CZD-Tools on first run. Clean FHS
+#     split, nothing to special-case.
+#   - It is an interactive terminal TUI (clears the screen, colored menu, reads
+#     input), so the .desktop entry MUST launch it in a terminal (Terminal=true).
+# =============================================================================
+
+set -e
+
+# --- Configuration knobs (override via build environment if desired) ---------
+# Canonical clone URL. Hardcoded per SPEC rule 3. See the INVESTIGATION NOTE
+# above: this repo does not exist yet; publish it or use the local fallback.
+CZD_TOOLS_REPO="${CZD_TOOLS_REPO:-https://github.com/CamoRageaholic1/CZD-Tools.git}"
+
+# Optional pinned branch/tag. Empty = default branch.
+CZD_TOOLS_REF="${CZD_TOOLS_REF:-}"
+
+# Fallback: a locally-staged copy of the suite, placed into the chroot BEFORE
+# `lb build` by provisioning (e.g. rsync of ~/CZD-Tools into the build tree).
+# This is NOT vendored in git; it is an out-of-band stage on the build VM.
+CZD_TOOLS_LOCAL_SRC="${CZD_TOOLS_LOCAL_SRC:-/opt/czd-tools-src}"
+
+# Install destination for the read-only program tree.
+CZD_TOOLS_DEST="/opt/czd-tools"
+
+echo "I: [0500-czd-tools] Integrating CZD-Tools into the image"
+
+# -----------------------------------------------------------------------------
+# 1. Runtime dependencies
+# -----------------------------------------------------------------------------
+# python3 runs the launcher; git/pip/pipx are what the launcher shells out to
+# when a user chooses to install one of the on-demand tools. `pystyle` gives the
+# colored menu (optional, so a failure here is non-fatal).
+echo "I: [0500-czd-tools] Installing runtime dependencies"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    pipx \
+    git \
+    ca-certificates
+
+# Ubuntu 24.04 (noble) marks the system Python as "externally managed" (PEP 668),
+# so a system-wide `pip install` needs --break-system-packages. pystyle is only
+# cosmetic, so we never let its absence fail the build (guarded with `|| true`).
+echo "I: [0500-czd-tools] Installing optional TUI dependency (pystyle)"
+python3 -m pip install --break-system-packages pystyle || \
+    echo "W: [0500-czd-tools] pystyle install failed; launcher will run in no-color fallback mode"
+
+# -----------------------------------------------------------------------------
+# 2. Obtain the CZD-Tools payload into /opt/czd-tools
+# -----------------------------------------------------------------------------
+# Strategy: try a git clone first; if that fails (repo missing / no network),
+# fall back to copying a locally-staged source tree; if neither is available,
+# warn loudly but do NOT abort the whole ISO build.
+echo "I: [0500-czd-tools] Fetching CZD-Tools payload"
+rm -rf "$CZD_TOOLS_DEST"
+
+if git clone --depth 1 "$CZD_TOOLS_REPO" "$CZD_TOOLS_DEST" 2>/dev/null; then
+    echo "I: [0500-czd-tools] Cloned from $CZD_TOOLS_REPO"
+    # Optionally pin to a specific ref (tag/branch) for reproducible builds.
+    if [ -n "$CZD_TOOLS_REF" ]; then
+        git -C "$CZD_TOOLS_DEST" fetch --depth 1 origin "$CZD_TOOLS_REF" \
+            && git -C "$CZD_TOOLS_DEST" checkout FETCH_HEAD \
+            || echo "W: [0500-czd-tools] Could not check out ref '$CZD_TOOLS_REF'; using default branch"
+    fi
+elif [ -d "$CZD_TOOLS_LOCAL_SRC" ]; then
+    echo "I: [0500-czd-tools] Clone unavailable; copying from local stage $CZD_TOOLS_LOCAL_SRC"
+    mkdir -p "$CZD_TOOLS_DEST"
+    # Copy the program tree but skip any per-user runtime state / VCS metadata so
+    # the image ships a clean, read-only baseline.
+    cp -a "$CZD_TOOLS_LOCAL_SRC/." "$CZD_TOOLS_DEST/"
+    rm -rf "$CZD_TOOLS_DEST/.git" "$CZD_TOOLS_DEST/tools" "$CZD_TOOLS_DEST/resources"
+else
+    echo "W: [0500-czd-tools] ============================================================"
+    echo "W: [0500-czd-tools] CZD-Tools payload NOT found."
+    echo "W: [0500-czd-tools]   - Clone target: $CZD_TOOLS_REPO (does it exist / is it public?)"
+    echo "W: [0500-czd-tools]   - Local stage : $CZD_TOOLS_LOCAL_SRC (not present)"
+    echo "W: [0500-czd-tools] The 'czd' launcher will NOT be functional in this image."
+    echo "W: [0500-czd-tools] Publish the repo or stage the source, then rebuild."
+    echo "W: [0500-czd-tools] Continuing so the rest of the build succeeds."
+    echo "W: [0500-czd-tools] ============================================================"
+fi
+
+# -----------------------------------------------------------------------------
+# 3. `czd` launcher wrapper on PATH
+# -----------------------------------------------------------------------------
+# Version-resilient: it globs for the highest CZD-Tools_v*.py so a future bump
+# (e.g. v1.3.3) keeps working without touching this hook. Falls back to a clear
+# message if the payload never made it into the image.
+echo "I: [0500-czd-tools] Installing /usr/local/bin/czd wrapper"
+cat > /usr/local/bin/czd <<'WRAPPER'
+#!/bin/sh
+# Corvid OS launcher wrapper for the CZD-Tools security-tool suite.
+# The program lives read-only under /opt/czd-tools; per-user state (installed
+# tools, theme, install-state) is written to ~/CZD-Tools on first run.
+set -e
+CZD_DIR="/opt/czd-tools"
+
+# Pick the newest CZD-Tools_v*.py so version bumps don't need a wrapper change.
+LAUNCHER="$(ls -1 "$CZD_DIR"/CZD-Tools_v*.py 2>/dev/null | sort -V | tail -n1)"
+
+if [ -z "$LAUNCHER" ] || [ ! -f "$LAUNCHER" ]; then
+    echo "czd: CZD-Tools payload is missing from $CZD_DIR." >&2
+    echo "czd: The image was built without the suite. See docs/ARCHITECTURE.md." >&2
+    exit 1
+fi
+
+exec python3 "$LAUNCHER" "$@"
+WRAPPER
+chmod 0755 /usr/local/bin/czd
+
+# -----------------------------------------------------------------------------
+# 4. Plasma menu entry (.desktop)
+# -----------------------------------------------------------------------------
+# Terminal=true is required because the launcher is an interactive TUI. Plasma
+# will open it in the default terminal (konsole). Icon uses a stock Breeze name;
+# a branded Corvid icon can be swapped in later.
+echo "I: [0500-czd-tools] Installing Plasma .desktop entry"
+mkdir -p /usr/share/applications
+cat > /usr/share/applications/czd-tools.desktop <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=CZD-Tools
+GenericName=Security Tool Launcher
+Comment=Menu-driven launcher for the CZD-Tools OSINT and pentest suite
+Exec=czd
+Icon=utilities-terminal
+Terminal=true
+Categories=System;Security;Network;ConsoleOnly;
+Keywords=security;osint;pentest;recon;tools;czd;
+DESKTOP
+chmod 0644 /usr/share/applications/czd-tools.desktop
+
+echo "I: [0500-czd-tools] CZD-Tools integration complete"

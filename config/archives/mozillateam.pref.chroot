@@ -1,0 +1,33 @@
+# Corvid OS -- APT pin: force Firefox to come from the mozillateam PPA .deb,
+# never from Ubuntu's snap-transition stub.            [Owner: integration Dev]
+# ===========================================================================
+# Companion to mozillateam.list.chroot. Read that file for the WHY. In short:
+# Ubuntu noble's `firefox` .deb is a transitional package that installs the
+# Firefox snap + snapd; we want the real self-contained .deb from the PPA.
+#
+# Two stanzas, both keyed on the Release-file Origin (o=):
+#   * PPA Release  -> Origin: LP-PPA-mozillateam   (Launchpad sets this)
+#   * Ubuntu       -> Origin: Ubuntu
+# Because the two stanzas select DIFFERENT origins, they do not fight: the PPA
+# copy of any firefox* package is scored 1001, the Ubuntu copy is scored -1.
+#
+# Priority meanings (apt_preferences(5)):
+#   1001 : install even if it would be a downgrade -> the PPA build ALWAYS wins.
+#     -1 : P <= 0 means NEVER install -> the Ubuntu snap stub can never be chosen.
+#
+# The firefox* GLOB (not bare `firefox`) is deliberate: it also covers the
+# language-pack stubs (firefox-l10n-*), which Ubuntu likewise ships as snap
+# transitionals. All firefox* packages therefore resolve to the PPA .deb set.
+# ===========================================================================
+
+# --- Stanza 1: every firefox* package comes from the mozillateam PPA --------
+Explanation: Real .deb Firefox (+ l10n) from ppa:mozillateam/ppa wins outright.
+Package: firefox*
+Pin: release o=LP-PPA-mozillateam
+Pin-Priority: 1001
+
+# --- Stanza 2: hard-block Ubuntu's snap-transition firefox* -----------------
+Explanation: Ubuntu noble firefox/firefox-l10n-* are snap stubs -> never install.
+Package: firefox*
+Pin: release o=Ubuntu
+Pin-Priority: -1

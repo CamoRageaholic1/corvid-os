@@ -1,0 +1,37 @@
+#!/bin/sh
+# =============================================================================
+# Corvid OS - 0100-firewall-prep.hook.chroot
+# Security DNA component. Runs inside the live-build chroot at build time.
+# -----------------------------------------------------------------------------
+# Purpose: guarantee a packet-filter backend exists BEFORE the AppArmor (0200)
+# and AnonSurf (0300) hooks run. AnonSurf builds its Tor-routing ruleset with
+# either nftables or iptables; having both present avoids a hard dependency
+# failure if the anonsurf package expects one or the other.
+#
+# DELIBERATELY MINIMAL: we install the tooling but do NOT enable a restrictive
+# default firewall. Corvid is a pentest box - it needs to send crafted/raw
+# traffic freely. Locking down INPUT/OUTPUT here would silently break scans and
+# listeners. AnonSurf manages its own ruleset only when the user toggles it on.
+# =============================================================================
+set -e
+
+export DEBIAN_FRONTEND=noninteractive
+
+echo "[0100-firewall-prep] Installing packet-filter backends (nftables + iptables)..."
+
+# nftables is the modern backend; iptables (nft-backed on Ubuntu 24.04) is kept
+# for tool compatibility. iproute2 is needed by AnonSurf routing logic.
+apt-get install -y --no-install-recommends \
+    nftables \
+    iptables \
+    iproute2 || {
+        echo "[0100-firewall-prep] WARNING: package install returned non-zero;" \
+             "continuing (build may still succeed with base-provided tools)."
+    }
+
+# Do NOT enable nftables.service with an enforcing ruleset. Leave the firewall
+# OFF by default so the pentest toolset has unrestricted egress/ingress.
+# If AnonSurf (0300) or a future host-firewall hook wants rules, it owns them.
+systemctl disable nftables.service 2>/dev/null || true
+
+echo "[0100-firewall-prep] Done. Packet-filter tooling present; no default ruleset enforced."

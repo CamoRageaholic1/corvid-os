@@ -1,0 +1,15 @@
+# /etc/os-release for Corvid OS
+# GENERATED FROM branding/os-release BY generate-assets.sh — do not hand-edit.
+NAME="Corvid OS"
+PRETTY_NAME="Corvid OS 24.04 (Corvid)"
+ID=corvid
+ID_LIKE="ubuntu debian"
+VERSION="24.04 (Corvid)"
+VERSION_ID="24.04"
+VERSION_CODENAME=corvid
+HOME_URL="https://github.com/CamoRageaholic1/corvid"
+SUPPORT_URL="https://github.com/CamoRageaholic1/corvid/issues"
+BUG_REPORT_URL="https://github.com/CamoRageaholic1/corvid/issues"
+DOCUMENTATION_URL="https://github.com/CamoRageaholic1/corvid/blob/main/README.md"
+LOGO=corvid
+BUILD_ID="corvid-20260703"

@@ -1,0 +1,118 @@
+#!/bin/sh
+# =============================================================================
+# Corvid OS - 0300-anonsurf-install.hook.chroot
+# Security DNA component. Runs inside the live-build chroot at build time.
+# -----------------------------------------------------------------------------
+# Purpose: graft ParrotSec's AnonSurf onto the Kubuntu base. AnonSurf is a
+# transparent-Tor toggle: `anonsurf start` routes ALL system traffic through Tor
+# via iptables/nftables + Tor's TransPort/DNSPort; `anonsurf stop` restores
+# normal networking.
+#
+# WHY THIS IS A "GRAFT" (see SPEC rule 5):
+#   AnonSurf is a Parrot (Debian) package, not an Ubuntu one. We reach it only
+#   because the APT pinning in config/archives/parrot.pref.chroot makes the
+#   Parrot repo available at LOW priority. Low priority means Parrot never
+#   overrides base libs, but an EXPLICIT `apt-get install anonsurf` still pulls
+#   it from Parrot. That is exactly the intended pinning behavior. We install
+#   its runtime deps (tor, iptables/nftables) explicitly so the graft's systemd
+#   unit and firewall logic actually work on the Ubuntu base.
+#
+# START POLICY  -- *** IMPORTANT SECURITY DECISION ***:
+#   The service is INSTALLED and AVAILABLE but NOT auto-started at boot. A live
+#   pentest box must NEVER silently force all traffic through Tor on boot (it
+#   would break scans/listeners and surprise the operator). The USER toggles it:
+#       anonsurf start   |   anonsurf stop   |   anonsurf status
+#   We therefore disable both tor.service and anonsurf.service from boot;
+#   `anonsurf start` brings Tor + the routing ruleset up on demand.
+# =============================================================================
+set -e
+
+export DEBIAN_FRONTEND=noninteractive
+
+echo "[0300-anonsurf] Installing AnonSurf runtime dependencies..."
+# tor            - the Tor daemon AnonSurf routes through
+# tor-geoipdb    - GeoIP data Tor uses for country selection / circuits
+# iptables       - legacy backend; AnonSurf's classic ruleset uses it
+# nftables       - modern backend; newer AnonSurf builds prefer it
+# iproute2       - `ip` for routing manipulation
+# secure-delete  - AnonSurf's RAM/swap wipe helpers (srm/sdmem)
+# gawk / curl    - used by AnonSurf's IP-check and helper scripts
+apt-get install -y --no-install-recommends \
+    tor \
+    tor-geoipdb \
+    iptables \
+    nftables \
+    iproute2 \
+    secure-delete \
+    gawk \
+    curl || {
+        echo "[0300-anonsurf] WARNING: one or more deps failed to install;" \
+             "AnonSurf may be partially functional. Continuing."
+    }
+
+# ---------------------------------------------------------------------------
+# Primary path: install the 'anonsurf' package from the pinned Parrot repo.
+# Because Parrot is pinned LOW, we name the package explicitly so APT is allowed
+# to satisfy it from Parrot. Some Parrot snapshots ship it as 'parrot-anonsurf'
+# or 'anonsurf' - we try the known names before falling back to source.
+# ---------------------------------------------------------------------------
+ANONSURF_OK=0
+for pkg in anonsurf parrot-anonsurf; do
+    echo "[0300-anonsurf] Trying package: $pkg ..."
+    if apt-get install -y "$pkg" 2>/dev/null; then
+        echo "[0300-anonsurf] Installed '$pkg' from repo."
+        ANONSURF_OK=1
+        break
+    fi
+done
+
+# ---------------------------------------------------------------------------
+# Fallback path: build/install AnonSurf from ParrotSec's git if no package was
+# available (repo snapshot skew, arch gaps, name changes). This is the SPEC's
+# documented fallback ("install from Parrot's git").
+# ---------------------------------------------------------------------------
+if [ "$ANONSURF_OK" -ne 1 ]; then
+    echo "[0300-anonsurf] Package unavailable; falling back to git build..."
+    apt-get install -y --no-install-recommends git make >/dev/null 2>&1 || true
+
+    ANONSURF_SRC="/usr/local/src/anonsurf"
+    rm -rf "$ANONSURF_SRC"
+    if git clone --depth 1 https://github.com/ParrotSec/anonsurf "$ANONSURF_SRC"; then
+        # ParrotSec/anonsurf ships a Makefile with an `install` target that
+        # drops the CLI, the systemd unit, and the GUI bits into place.
+        if [ -f "$ANONSURF_SRC/Makefile" ]; then
+            ( cd "$ANONSURF_SRC" && make install ) && ANONSURF_OK=1
+        fi
+    fi
+
+    if [ "$ANONSURF_OK" -ne 1 ]; then
+        echo "[0300-anonsurf] ERROR: git fallback also failed. AnonSurf NOT" \
+             "installed. The Parrot source/pin for anonsurf needs resolution." >&2
+        # Do not hard-fail the whole build over one optional graft; leave a
+        # breadcrumb the smoke-test can catch.
+        echo "anonsurf-install-FAILED" > /var/lib/corvid-anonsurf-status || true
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Boot policy: make everything AVAILABLE but nothing AUTO-ROUTES at boot.
+# ---------------------------------------------------------------------------
+if [ "$ANONSURF_OK" -eq 1 ]; then
+    echo "[0300-anonsurf] Setting boot policy (available, user-toggled only)..."
+
+    # Reload unit files so a git-installed anonsurf.service is recognized.
+    systemctl daemon-reload 2>/dev/null || true
+
+    # Tor: do NOT auto-start. `anonsurf start` starts Tor on demand. (Running
+    # Tor at boot would only open a local SOCKS proxy, but we keep the box quiet
+    # by default and let AnonSurf own Tor's lifecycle when toggled.)
+    systemctl disable tor.service 2>/dev/null || true
+    systemctl disable tor@default.service 2>/dev/null || true
+
+    # AnonSurf: unit installed and available, but NOT enabled for boot, so no
+    # transparent Tor routing happens until the user runs `anonsurf start`.
+    systemctl disable anonsurf.service 2>/dev/null || true
+
+    echo "anonsurf-install-OK" > /var/lib/corvid-anonsurf-status || true
+    echo "[0300-anonsurf] Done. Toggle with: anonsurf start | stop | status"
+fi

@@ -1,0 +1,22 @@
+# Corvid OS -- Mozilla Team PPA (real .deb Firefox for the noble base)
+# ---------------------------------------------------------------------------
+# WHY THIS EXISTS:
+#   On Ubuntu 24.04 (noble) the stock `firefox` .deb is a TRANSITIONAL stub
+#   that just pulls in the Firefox *snap* (and drags snapd onto the system).
+#   Corvid is a KDE live-build image and we do NOT want snapd on it (snaps do
+#   not preseed cleanly into a live chroot and first-launch is slow/flaky).
+#   The mozillateam PPA ships a genuine, self-contained .deb build of Firefox,
+#   so we add it here and PIN it above the Ubuntu stub (see
+#   mozillateam.pref.chroot). The GPG signing key is mozillateam.key.chroot.
+#
+# Suite = noble (must match the base). Component = main. amd64 primary.
+# Signature is verified against mozillateam.key.chroot (Launchpad signing key,
+#   fingerprint 0AB2 1567 9C57 1D1C 8325  275B 9BDB 3D89 CE49 EC21 -- verified
+#   2026-07-03 via keyserver.ubuntu.com; gpg --dearmor + --show-keys confirmed
+#   the fingerprint and a valid CRC on the armored block).
+#
+# Transport: HTTPS. ca-certificates is present in the chroot (pulled by the
+#   base build), so TLS to launchpadcontent.net resolves during the archive
+#   stage. Authenticity comes from the GPG signature regardless of transport.
+
+deb https://ppa.launchpadcontent.net/mozillateam/ppa/ubuntu noble main

@@ -1,0 +1,78 @@
+# Corvid OS -- APT pinning (THE make-or-break file)
+# ===========================================================================
+# Goal: Kubuntu 24.04 (noble) is the immovable base. Parrot's repo is present
+# ONLY as a source of explicitly-requested security tools. Parrot must NEVER
+# supply libc6/glibc, python3, systemd, the toolchain, or any core Ubuntu
+# package -- that version skew is exactly what breaks an Ubuntu+Parrot graft.
+#
+# How APT priorities work (apt_preferences(5)), for reviewers:
+#   P > 1000  : install even if it means DOWNGRADING            (dangerous)
+#   990..1000 : install unless it downgrades
+#   500..990  : install unless a target-release version exists / installed is newer
+#   100..500  : install unless a version from another source exists / installed is newer
+#   1..100    : install ONLY if nothing else provides it
+#   P <= 0    : NEVER install
+# The most SPECIFIC matching stanza wins (a named/glob Package overrides "*").
+#
+# Net effect of the three stanzas below:
+#   * Any package that exists in Ubuntu  -> comes from Ubuntu (990 beats 100).
+#   * A package that exists ONLY in Parrot (a pentest tool) -> installs from
+#     Parrot at 100 (nothing else provides it). This is what we want.
+#   * Core system packages -> hard-blocked from Parrot at -1 (belt & suspenders,
+#     so even an odd Ubuntu pocket state can't let Parrot slip glibc in).
+#
+# Matchers use the Release-file Origin field (o=), verified 2026-07-03:
+#   Ubuntu Release:  Origin: Ubuntu
+#   Parrot Release:  Origin: Parrot   (Label "Parrot 6 Lorikeet Repository")
+# ===========================================================================
+
+# --- Stanza 1: Ubuntu base is the strong default (all pockets) --------------
+Explanation: Ubuntu noble + noble-security + noble-updates are the canonical base.
+Package: *
+Pin: release o=Ubuntu
+Pin-Priority: 990
+
+# --- Stanza 2: Parrot repo is LOW -- opt-in only ----------------------------
+Explanation: Parrot only wins for packages Ubuntu does not ship at all.
+Package: *
+Pin: release o=Parrot
+Pin-Priority: 100
+
+# --- Stanza 3: HARD BLOCK core packages from Parrot (never, at any priority) -
+# These are the load-bearing pieces of the OS. If a Parrot tool genuinely
+# needs a Parrot-only version of one of these, we WANT the install to fail
+# loudly here rather than silently swap the base out from under Ubuntu.
+Explanation: Core libc/toolchain/init/pkg-management must always be Ubuntu's.
+Package: libc6 libc6-* libc-bin libc-dev-bin glibc-* locales locales-all
+Pin: release o=Parrot
+Pin-Priority: -1
+
+Explanation: Python interpreter + stdlib stays on Ubuntu.
+Package: python3 python3-minimal python3.* libpython3* python3-dev
+Pin: release o=Parrot
+Pin-Priority: -1
+
+Explanation: init system / service manager stays on Ubuntu.
+Package: systemd systemd-* libsystemd* udev libudev* init-system-helpers
+Pin: release o=Parrot
+Pin-Priority: -1
+
+Explanation: C/C++ runtime + core compiler runtime stays on Ubuntu.
+Package: libstdc++6 libstdc++-*-dev libgcc-s1 libgcc-*-dev gcc-* g++-* cpp-* libc++* binutils binutils-*
+Pin: release o=Parrot
+Pin-Priority: -1
+
+Explanation: TLS/crypto base libs stay on Ubuntu.
+Package: libssl3 libssl3t64 libssl-dev openssl libgnutls30* libgcrypt20 zlib1g zlib1g-dev
+Pin: release o=Parrot
+Pin-Priority: -1
+
+Explanation: Package management + dpkg must never be Parrot's.
+Package: apt apt-utils apt-transport-https libapt-pkg* dpkg dpkg-* debconf debconf-*
+Pin: release o=Parrot
+Pin-Priority: -1
+
+Explanation: Core shells + base userland stay on Ubuntu.
+Package: bash dash coreutils util-linux util-linux-* mount login passwd base-files base-passwd perl perl-base
+Pin: release o=Parrot
+Pin-Priority: -1

@@ -1,0 +1,73 @@
+#!/bin/sh
+# =============================================================================
+# Corvid OS - 0200-apparmor-enforce.hook.chroot
+# Security DNA component. Runs inside the live-build chroot at build time.
+# -----------------------------------------------------------------------------
+# Purpose: install AppArmor + its tooling and the shipped profiles, make sure
+# every profile is in ENFORCE mode (not complain), and enable the service so the
+# kernel loads and enforces profiles on first boot.
+#
+# CHROOT REALITY CHECK: at build time we are inside a chroot with no AppArmor
+# securityfs mounted, so `aa-enforce` cannot actually push a profile into the
+# running kernel. What we CAN do reliably offline is:
+#   (a) install the profiles,
+#   (b) remove any complain-mode / disable symlinks so nothing loads relaxed,
+#   (c) enable apparmor.service.
+# The kernel then loads all profiles in enforce mode at first boot. We still
+# attempt aa-enforce as a best-effort, tolerating failure in the chroot.
+#
+# PENTEST NOTE: enforce mode confines system daemons (cups, dhclient, tcpdump,
+# man, etc.), NOT the pentester's interactive shells or arbitrary tools. It does
+# not get in the way of running exploits, and it materially reduces the blast
+# radius if one of those confined daemons is popped.
+# =============================================================================
+set -e
+
+export DEBIAN_FRONTEND=noninteractive
+
+echo "[0200-apparmor-enforce] Installing AppArmor packages..."
+# apparmor            - the core LSM userspace
+# apparmor-utils      - aa-enforce / aa-complain / aa-status
+# apparmor-profiles   - the base set of distro profiles
+# apparmor-profiles-extra - additional community profiles (more coverage)
+apt-get install -y --no-install-recommends \
+    apparmor \
+    apparmor-utils \
+    apparmor-profiles \
+    apparmor-profiles-extra || {
+        echo "[0200-apparmor-enforce] WARNING: some AppArmor packages failed to" \
+             "install; continuing with whatever landed."
+    }
+
+# ---------------------------------------------------------------------------
+# Force ENFORCE mode offline:
+#   - /etc/apparmor.d/force-complain/<name>  -> makes <name> load in complain
+#   - /etc/apparmor.d/disable/<name>         -> stops <name> from loading
+# Removing both guarantees every profile loads in enforce at boot.
+# ---------------------------------------------------------------------------
+echo "[0200-apparmor-enforce] Clearing complain-mode and disable symlinks..."
+if [ -d /etc/apparmor.d/force-complain ]; then
+    rm -f /etc/apparmor.d/force-complain/* 2>/dev/null || true
+fi
+if [ -d /etc/apparmor.d/disable ]; then
+    rm -f /etc/apparmor.d/disable/* 2>/dev/null || true
+fi
+
+# Best-effort: set every top-level profile to enforce. This may no-op or warn in
+# the chroot (no securityfs). That is expected and non-fatal; the boot-time load
+# is what actually enforces.
+echo "[0200-apparmor-enforce] Best-effort aa-enforce on shipped profiles..."
+if command -v aa-enforce >/dev/null 2>&1; then
+    for prof in /etc/apparmor.d/*; do
+        [ -f "$prof" ] || continue
+        aa-enforce "$prof" >/dev/null 2>&1 || true
+    done
+fi
+
+# Enable the service so systemd loads/enforces all profiles at boot.
+# In a chroot `systemctl enable` just writes the wants-symlink; harmless.
+echo "[0200-apparmor-enforce] Enabling apparmor.service..."
+systemctl enable apparmor.service 2>/dev/null || true
+
+echo "[0200-apparmor-enforce] Done. Profiles set to enforce; service enabled."
+echo "[0200-apparmor-enforce] Verify on the live system with: sudo aa-status"

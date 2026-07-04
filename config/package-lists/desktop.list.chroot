@@ -1,0 +1,89 @@
+# ============================================================================
+# desktop.list.chroot  —  Corvid OS DESKTOP layer
+# ----------------------------------------------------------------------------
+# live-build package list. One package per line; lines beginning with '#' are
+# comments and blank lines are ignored. These packages install into the chroot
+# (the live/installed system), from the Ubuntu/noble base repo. Nothing here
+# should pull from Parrot (see the pinning in config/archives).
+#
+# DECISION: we ship KDE Plasma via the `kubuntu-desktop` metapackage rather
+# than the leaner `kde-plasma-desktop sddm` pair.
+#   WHY: `kubuntu-desktop` is the batteries-included Kubuntu experience — it
+#   pulls Plasma, the SDDM display manager, NetworkManager + plasma-nm, the
+#   core KDE apps (Dolphin, Konsole, Kate, Discover, etc.), audio (PipeWire),
+#   fonts and sane desktop defaults already integrated the way Kubuntu ships
+#   them. For a portfolio-grade "it just works" image, completeness beats the
+#   few hundred MB a curated `kde-plasma-desktop` would save. The base is built
+#   with `--mode ubuntu --distribution noble` from a minimal seed, so the
+#   desktop MUST be requested explicitly here — it is not implied by the base.
+#
+#   Leaner alternative (NOT used — kept for reference; would need each KDE app
+#   added back by hand):
+#     # kde-plasma-desktop
+#     # sddm
+# ============================================================================
+
+# --- Primary: full Kubuntu Plasma desktop (Plasma + SDDM + KDE apps) ---------
+kubuntu-desktop
+
+# --- Belt-and-suspenders: guarantee the SPEC-named + core pieces are present -
+# kubuntu-desktop already pulls most of these, but several are only Recommends.
+# Listing them explicitly makes the image deterministic even if a Recommends is
+# dropped upstream.
+sddm
+plasma-nm
+plasma-workspace
+plasma-widgets-addons
+systemsettings
+konsole
+dolphin
+dolphin-plugins
+kate
+ark
+gwenview
+okular
+spectacle
+kfind
+kwalletmanager
+kdeconnect
+partitionmanager
+
+# --- Networking / VPN front-ends (AnonSurf + WARP era friendliness) ----------
+network-manager
+network-manager-openvpn
+plasma-nm
+
+# --- Fonts (dev-friendly monospace + full Unicode/emoji coverage) ------------
+fonts-noto
+fonts-noto-color-emoji
+fonts-firacode
+fonts-hack-ttf
+fonts-liberation
+
+# --- Desktop plumbing --------------------------------------------------------
+xdg-utils
+xdg-user-dirs
+xdg-user-dirs-gtk
+kde-config-gtk-style
+plasma-discover-backend-flatpak
+
+# --- Web browser -------------------------------------------------------------
+# RESOLVED at the archive layer: on noble the stock `firefox`
+# .deb is a TRANSITIONAL stub that installs the Firefox *snap* and pulls in
+# snapd -- which we do NOT want on this KDE live image (snaps do not preseed
+# cleanly into a live chroot; first-launch is slow/flaky). We now ship a genuine
+# self-contained .deb from the mozillateam PPA instead. The plumbing lives in:
+#     config/archives/mozillateam.list.chroot   (adds ppa:mozillateam/ppa, noble)
+#     config/archives/mozillateam.pref.chroot   (pins firefox* from the PPA to
+#                                                 1001; Ubuntu snap stub to -1)
+#     config/archives/mozillateam.key.chroot    (Launchpad signing key)
+# So the `firefox` line below now resolves to the PPA .deb, NOT the snap.
+# Do NOT add `snapd` anywhere; do NOT swap this to `firefox-esr` (the pin is
+# built around the PPA package name `firefox`).
+firefox
+
+# English UI language pack for the PPA Firefox build. Also a snap-transition
+# stub in stock Ubuntu, but mozillateam.pref.chroot's `firefox*` glob pins it
+# to the PPA .deb the same way as the browser itself. Add more firefox-l10n-*
+# here if the image needs additional locales.
+firefox-l10n-en

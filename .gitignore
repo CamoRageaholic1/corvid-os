@@ -1,0 +1,24 @@
+# live-build artifacts (built on the Proxmox VM, never committed)
+.build/
+chroot/
+chroot.packages.*
+binary/
+binary.*
+cache/
+*.iso
+*.img
+*.log
+*.tar.zst
+config/binary
+config/bootstrap
+config/chroot
+config/common
+config/source
+.stage/
+
+# stray MCP/tooling scratch DBs that land in cwd (not part of the distro)
+agentdb.rvf
+agentdb.rvf.lock
+ruvector.db
+*.rvf
+*.rvf.lock

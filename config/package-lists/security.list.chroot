@@ -1,0 +1,59 @@
+# ============================================================================
+# security.list.chroot  —  Corvid OS full Parrot security TOOL catalog
+# ----------------------------------------------------------------------------
+# live-build package list (one package per line; '#' = comment).
+#
+# These packages come from the PARROT repo, NOT Ubuntu. They only resolve
+# because Parrot is layered in via `config/archives/parrot.list.chroot` and
+# APT-pins it (Parrot LOW, e.g. Pin-Priority 100; Ubuntu/noble HIGH 900+), so
+# only the packages explicitly named here pull from Parrot while glibc/python3/
+# core libs stay on the LTS base. See SPEC.md §4 rule 1.
+#
+# Expect a BIG install (~several GB) — this is intentional (SPEC §2: "Big ISO
+# ~8-9GB is expected and accepted").
+#
+# METAPACKAGE NAME: VERIFIED. `parrot-tools-full` exists in the Parrot repo.
+# Confirmed 2026-07-03 by directory-listing the pool:
+#     https://deb.parrot.sh/parrot/pool/main/p/parrot-tools/
+# which contains parrot-tools-full_*.deb (versions 6.4.2 / 7.1.1 / 7.1.2,
+# archs amd64/arm64/armhf/riscv64). Since we pin the `lory` suite (Parrot 6),
+# the 6.x amd64 build is what resolves. Use it directly, no alias needed.
+#
+# NOTE the earlier "parrot-meta-full" guess does NOT exist; the whole-catalog
+# meta is `parrot-tools-full`. The parrot-meta-* family in that pool is a
+# different thing (parrot-meta-privacy, -crypto, -devel*) and is NOT the tool
+# catalog -- do not substitute it for parrot-tools-full.
+# ============================================================================
+
+# --- PRIMARY: the full Parrot pentest tool catalog --------------------------
+parrot-tools-full
+
+# ============================================================================
+# FALLBACK (commented) — CATEGORY METAPACKAGES
+# ----------------------------------------------------------------------------
+# If you ever need to slim the image below the full catalog, DELETE the
+# `parrot-tools-full` line above and UNCOMMENT the subset of category metas you
+# want. The names below are the REAL parrot-tools-<category> packages, verified
+# 2026-07-03 in the same pool listing as parrot-tools-full:
+#     https://deb.parrot.sh/parrot/pool/main/p/parrot-tools/
+# (Earlier drafts of this file guessed names like parrot-tools-info /
+#  -database / -reverse / -exploitation / -post / -forensic / -report /
+#  -social / -crypto -- those DO NOT EXIST. Use only the verified names here.)
+# ============================================================================
+#
+# parrot-tools-infogathering   # information gathering / recon
+# parrot-tools-vuln            # vulnerability analysis
+# parrot-tools-web             # web application analysis
+# parrot-tools-password        # password attacks
+# parrot-tools-wireless        # wireless attacks
+# parrot-tools-reversing       # reverse engineering
+# parrot-tools-pwn             # exploitation / binary pwn
+# parrot-tools-sniff           # sniffing & spoofing
+# parrot-tools-postexploit     # post-exploitation
+# parrot-tools-forensics       # digital forensics
+# parrot-tools-reporting       # reporting tools
+# parrot-tools-automotive      # automotive / CAN
+# parrot-tools-cloud           # cloud pentest (pacu, etc.)
+# parrot-tools-ai              # AI/ML security tooling
+# parrot-tools-maintain        # access maintenance / persistence
+# ============================================================================

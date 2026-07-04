@@ -1,0 +1,115 @@
+#!/bin/sh
+# =============================================================================
+# Corvid OS — branding activation hook  (runs INSIDE the chroot)
+# =============================================================================
+# live-build has already copied config/includes.chroot/* into the filesystem
+# (including everything branding/generate-assets.sh staged). This hook performs
+# the ACTIONS that need commands/logic rather than a static file drop:
+#
+#   * confirm the branded /etc/os-release (mirror to /usr/lib/os-release)
+#   * set the Corvid Plymouth theme as the boot-time default
+#   * set the Corvid wallpaper as the Plasma + SDDM default
+#   * drop the "Install <NAME>" desktop launcher (runs Calamares via pkexec)
+#   * install the Calamares config into /etc/calamares/
+#
+# All steps are guarded so a missing staged asset degrades to a warning instead
+# of failing the whole build. Product name is read from os-release, so a rename
+# needs no edit here.
+# -----------------------------------------------------------------------------
+set -e
+
+echo "P: [0600-branding] applying Corvid OS branding"
+
+# ---- product name (single source of truth = /etc/os-release) ----------------
+NAME="Corvid OS"
+if [ -r /etc/os-release ]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    NAME="${NAME:-Corvid OS}"
+fi
+
+# ---- os-release: mirror to /usr/lib/os-release ------------------------------
+if [ -r /etc/os-release ]; then
+    cp -f /etc/os-release /usr/lib/os-release 2>/dev/null || true
+fi
+
+# ---- Plymouth: set Corvid as the default boot theme -------------------------
+if [ -d /usr/share/plymouth/themes/corvid ]; then
+    if command -v plymouth-set-default-theme >/dev/null 2>&1; then
+        # -R rebuilds the initramfs so the theme is present at boot.
+        plymouth-set-default-theme -R corvid \
+            || plymouth-set-default-theme corvid \
+            || echo "W: [0600-branding] could not set plymouth theme"
+    else
+        echo "W: [0600-branding] plymouth-set-default-theme not found; skipping"
+    fi
+else
+    echo "W: [0600-branding] plymouth theme not staged (run generate-assets.sh)"
+fi
+
+# ---- Wallpaper: Plasma system default ---------------------------------------
+WALLPKG="Corvid"
+WALLIMG="/usr/share/wallpapers/Corvid/contents/images/1920x1080.png"
+if [ -f "$WALLIMG" ]; then
+    # Set the default wallpaper in each installed Global Theme (look-and-feel).
+    # Prefer kwriteconfig (creates the [Wallpaper] section correctly); fall back
+    # to appending the section when kwriteconfig is unavailable.
+    KW=""
+    for c in kwriteconfig6 kwriteconfig5; do
+        if command -v "$c" >/dev/null 2>&1; then KW="$c"; break; fi
+    done
+    for lnf in /usr/share/plasma/look-and-feel/org.kde.breeze.desktop/contents/defaults \
+               /usr/share/plasma/look-and-feel/org.kde.breezedark.desktop/contents/defaults; do
+        [ -f "$lnf" ] || continue
+        if [ -n "$KW" ]; then
+            "$KW" --file "$lnf" --group Wallpaper --key Image "$WALLPKG" || true
+        elif ! grep -q '^\[Wallpaper\]' "$lnf" 2>/dev/null; then
+            printf '\n[Wallpaper]\nImage=%s\n' "$WALLPKG" >> "$lnf"
+        fi
+    done
+else
+    echo "W: [0600-branding] wallpaper not staged (run generate-assets.sh)"
+fi
+
+# ---- Wallpaper: SDDM login background ---------------------------------------
+if [ -f "$WALLIMG" ] && [ -d /usr/share/sddm/themes/breeze ]; then
+    cat > /usr/share/sddm/themes/breeze/theme.conf.user <<EOF
+[General]
+type=image
+background=$WALLIMG
+EOF
+    mkdir -p /etc/sddm.conf.d
+    cat > /etc/sddm.conf.d/corvid.conf <<EOF
+[Theme]
+Current=breeze
+EOF
+fi
+
+# ---- Desktop launcher: "Install <NAME>" -------------------------------------
+mkdir -p /usr/share/applications
+cat > /usr/share/applications/install-corvid.desktop <<EOF
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Install $NAME
+GenericName=System Installer
+Comment=Install $NAME to disk (LUKS full-disk encryption by default)
+Exec=pkexec calamares
+TryExec=calamares
+Icon=corvid
+Terminal=false
+StartupNotify=true
+Categories=Qt;System;Settings;
+Keywords=install;installer;calamares;disk;
+EOF
+chmod 0644 /usr/share/applications/install-corvid.desktop
+
+# ---- Calamares config -> /etc/calamares -------------------------------------
+if [ -d /usr/share/corvid/calamares ]; then
+    mkdir -p /etc/calamares
+    cp -a /usr/share/corvid/calamares/. /etc/calamares/
+else
+    echo "W: [0600-branding] Calamares config not staged (run generate-assets.sh)"
+fi
+
+echo "P: [0600-branding] done"

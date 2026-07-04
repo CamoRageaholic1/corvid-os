@@ -1,0 +1,53 @@
+# =============================================================================
+# Corvid OS — Calamares branding component
+# =============================================================================
+# The product-name / version / URL strings below are the STATIC FALLBACK so the
+# repo works as-is. At build-prep, branding/generate-assets.sh re-derives the
+# productName / shortProductName / version* / bootloaderEntryName / productUrl
+# fields from branding/os-release (the single source of truth) and rewrites them
+# here in the staged copy. So a rename = edit branding/os-release + rerun the
+# script; you never hand-edit the name in two places.
+# -----------------------------------------------------------------------------
+---
+componentName: corvid
+
+# Welcome-window sizing.
+windowExpanding: normal
+windowSize: 800px,520px
+windowPlacement: center
+
+# UI layout flags.
+welcomeStyleCalamares: false
+welcomeExpandingLogo:  true
+
+# ---- strings (templated from os-release by generate-assets.sh) --------------
+strings:
+    productName:         "Corvid OS"
+    shortProductName:    "Corvid"
+    version:             "24.04"
+    shortVersion:        "24.04"
+    versionedName:       "Corvid OS 24.04 (Corvid)"
+    shortVersionedName:  "Corvid 24.04"
+    bootloaderEntryName: "Corvid"
+    productUrl:          "https://github.com/CamoRageaholic1/corvid"
+    supportUrl:          "https://github.com/CamoRageaholic1/corvid/issues"
+    knownIssuesUrl:      "https://github.com/CamoRageaholic1/corvid/issues"
+    releaseNotesUrl:     "https://github.com/CamoRageaholic1/corvid/releases"
+    donateUrl:           ""
+
+# ---- images (staged next to this file by generate-assets.sh) ----------------
+images:
+    productIcon:    "logo.png"
+    productLogo:    "logo.png"
+    productWelcome: "logo.png"
+
+# ---- slideshow shown during install ----------------------------------------
+slideshow: "show.qml"
+slideshowAPI: 2
+
+# ---- style / colours (dark, corvid palette) --------------------------------
+style:
+    sidebarBackground:    "#0A0C12"
+    sidebarText:          "#E8ECF4"
+    sidebarTextSelect:    "#27E0C8"
+    sidebarTextCurrent:   "#27E0C8"

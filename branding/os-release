@@ -1,0 +1,36 @@
+# =============================================================================
+# Corvid OS — CANONICAL os-release (SINGLE SOURCE OF TRUTH FOR THE NAME)
+# =============================================================================
+# This file is the ONE canonical place the distro name lives (SPEC §2).
+# To rename the whole distro you change the values here and re-run
+#   branding/generate-assets.sh
+# which propagates NAME / ID everywhere (staged /etc/os-release, the Calamares
+# branding.desc, the "Install" launcher, SDDM/Plasma references, boot menus).
+#
+# Nothing else in the repo should hardcode the product name. The two extra,
+# non-standard keys below (CORVID_NAME / CORVID_ID) are the build variables
+# other scripts source; standard os-release consumers ignore unknown keys.
+# -----------------------------------------------------------------------------
+
+NAME="Corvid OS"
+PRETTY_NAME="Corvid OS 24.04 (Corvid)"
+ID=corvid
+ID_LIKE="ubuntu debian"
+VERSION="24.04 (Corvid)"
+VERSION_ID="24.04"
+VERSION_CODENAME=corvid
+HOME_URL="https://github.com/CamoRageaholic1/corvid"
+SUPPORT_URL="https://github.com/CamoRageaholic1/corvid/issues"
+BUG_REPORT_URL="https://github.com/CamoRageaholic1/corvid/issues"
+DOCUMENTATION_URL="https://github.com/CamoRageaholic1/corvid/blob/main/README.md"
+LOGO=corvid
+
+# BUILD_ID is stamped at ISO build time. The literal token below is replaced by
+# generate-assets.sh (date +%Y%m%d) when it stages this file into the chroot.
+# Kept as a static fallback so a raw copy is still valid os-release syntax.
+BUILD_ID="corvid-dev"
+
+# --- Build variables (non-standard; sourced by branding/generate-assets.sh) ---
+CORVID_NAME="Corvid OS"
+CORVID_ID=corvid
+CORVID_SHORTNAME="Corvid"

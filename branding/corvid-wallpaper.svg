@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Corvid OS — canonical vector wallpaper (hand-authored, source of truth).
+  1920x1080. Rasterized to PNG by generate-assets.sh on the build VM.
+  Used as: Plasma desktop default, SDDM login background, Plymouth boot
+  background, and GRUB/EFI boot-menu background.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0A0C12"/>
+      <stop offset="1" stop-color="#111622"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.5">
+      <stop offset="0" stop-color="#141B2B" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#0A0C12" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <rect width="1920" height="1080" fill="url(#glow)"/>
+
+  <!-- faint feather chevron fields (upper-left, lower-right) -->
+  <g stroke="#3A4459" stroke-width="2" fill="none" opacity="0.55">
+    <path d="M470 300 L560 360 L650 300"/>
+    <path d="M470 320 L560 380 L650 320"/>
+    <path d="M470 340 L560 400 L650 340"/>
+    <path d="M470 360 L560 420 L650 360"/>
+    <path d="M470 380 L560 440 L650 380"/>
+  </g>
+  <g stroke="#3A4459" stroke-width="2" fill="none" opacity="0.45">
+    <path d="M1300 720 L1390 780 L1480 720"/>
+    <path d="M1300 740 L1390 800 L1480 740"/>
+    <path d="M1300 760 L1390 820 L1480 760"/>
+    <path d="M1300 780 L1390 840 L1480 780"/>
+  </g>
+
+  <!-- angular raven mark above the wordmark -->
+  <g transform="translate(960 400)">
+    <g fill="none" stroke="#3A4459" stroke-width="6" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M0 0 L-70 -60 L-32 -42 L-52 -88 L-14 -54"/>
+      <path d="M0 0 L70 -60 L32 -42 L52 -88 L14 -54"/>
+      <path d="M0 0 L0 48 L-14 30 M0 48 L14 30"/>
+    </g>
+    <circle cx="18" cy="-12" r="6" fill="#27E0C8"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="960" y="560" text-anchor="middle"
+        font-family="'DejaVu Sans Mono','Liberation Mono',monospace"
+        font-size="120" font-weight="700" letter-spacing="18" fill="#E8ECF4">CORVID OS</text>
+  <rect x="700" y="596" width="520" height="5" rx="2" fill="#27E0C8"/>
+
+  <!-- tagline -->
+  <text x="960" y="660" text-anchor="middle"
+        font-family="'DejaVu Sans','Liberation Sans',sans-serif"
+        font-size="30" letter-spacing="10" fill="#6B768C">SECURE  ·  CODE  ·  RECON</text>
+</svg>

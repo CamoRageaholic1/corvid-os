@@ -1,0 +1,74 @@
+#!/bin/sh
+# Corvid OS -- auto/config
+# ===========================================================================
+# Materialises the live-build tree ("lb config"). This is the backbone that
+# decides "does it build at all". Runs ON THE PROXMOX BUILD VM (Ubuntu 24.04),
+# never on macOS. Validate here only with `bash -n`; never execute lb.
+#
+# What this sets up:
+#   * Ubuntu 24.04 LTS (noble) amd64 base, built in --mode ubuntu.
+#   * Ubuntu archive + security mirrors, all four archive areas.
+#   * iso-hybrid image (boots from USB or optical, BIOS + UEFI).
+#   * NO debian-installer -- Corvid installs with Calamares.
+#   * Encrypted live persistence via the live boot params.
+#   * The Parrot security repo + APT pinning + GPG key are picked up
+#     automatically from config/archives/parrot.{list,pref,key}.chroot --
+#     nothing to wire here; live-build reads that directory on its own.
+#
+# Branding stays in ONE place (SPEC section 2): the ISO metadata below reads
+# the CORVID_NAME / CORVID_VERSION build vars (falling back to sane defaults)
+# so a rename never has to touch this file.
+#
+# "noauto" as the first argument stops lb config from re-sourcing this script
+# recursively -- it is the standard live-build auto/config idiom.
+# ===========================================================================
+
+set -e
+
+lb config noauto \
+	`# --- distro / arch / mode ---------------------------------------` \
+	--mode ubuntu \
+	--distribution noble \
+	--architectures amd64 \
+	--linux-flavours generic \
+	`# --- archive areas (both, for --mode ubuntu parent handling) ----` \
+	--archive-areas "main restricted universe multiverse" \
+	--parent-archive-areas "main restricted universe multiverse" \
+	`# --- Ubuntu mirrors: build-time (chroot) ------------------------` \
+	--mirror-bootstrap "http://archive.ubuntu.com/ubuntu/" \
+	--mirror-chroot "http://archive.ubuntu.com/ubuntu/" \
+	--mirror-chroot-security "http://security.ubuntu.com/ubuntu/" \
+	`# --- Ubuntu mirrors: written into the installed system ----------` \
+	--mirror-binary "http://archive.ubuntu.com/ubuntu/" \
+	--mirror-binary-security "http://security.ubuntu.com/ubuntu/" \
+	`# --- same mirrors on the "parent" (ubuntu) side -----------------` \
+	--parent-mirror-bootstrap "http://archive.ubuntu.com/ubuntu/" \
+	--parent-mirror-chroot "http://archive.ubuntu.com/ubuntu/" \
+	--parent-mirror-chroot-security "http://security.ubuntu.com/ubuntu/" \
+	--parent-mirror-binary "http://archive.ubuntu.com/ubuntu/" \
+	--parent-mirror-binary-security "http://security.ubuntu.com/ubuntu/" \
+	`# --- pockets ----------------------------------------------------` \
+	--security true \
+	--updates true \
+	--backports false \
+	`# --- image type + bootloaders (BIOS via syslinux, UEFI via grub)` \
+	--binary-images iso-hybrid \
+	--bootloaders "syslinux,grub-efi" \
+	`# --- NO debian-installer: Corvid uses Calamares -----------------` \
+	--debian-installer none \
+	`# --- desktop wants Recommends ON (fuller default install) -------` \
+	--apt-recommends true \
+	`# --- drop memtest to shrink the failure surface of the backbone -` \
+	--memtest none \
+	`# --- guarantee ca-certificates before the HTTPS Parrot repo is hit` \
+	--debootstrap-options "--include=ca-certificates" \
+	`# --- encrypted live persistence + live username -----------------` \
+	--bootappend-live "boot=live components username=corvid persistence persistence-encryption=luks" \
+	`# --- ISO metadata: parameterised on the CORVID_* build vars -----` \
+	--iso-application "${CORVID_NAME:-Corvid OS}" \
+	--iso-volume "${CORVID_NAME:-Corvid} ${CORVID_VERSION:-1.0}" \
+	--iso-preparer "Debian live-build -- Corvid OS project" \
+	--iso-publisher "Corvid OS Project (github.com/CamoRageaholic1)" \
+	`# --- output name: yields corvid-amd64.hybrid.iso ----------------` \
+	--image-name "corvid" \
+	"${@}"

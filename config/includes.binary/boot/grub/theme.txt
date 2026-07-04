@@ -1,0 +1,45 @@
+# =============================================================================
+# Corvid OS — GRUB (UEFI) boot-menu theme
+# =============================================================================
+# Dark corvid theme for the EFI boot menu. Background is boot/grub/splash.png
+# (staged by generate-assets.sh). The label text is templated from
+# branding/os-release by generate-assets.sh ("Corvid OS" is the fallback).
+#
+# ACTIVATION NOTE: live-build already uses /boot/grub/splash.png as the menu
+# background when present, so the branded backdrop shows with no extra wiring.
+# To load THIS full theme (boxed menu + label), grub.cfg must contain
+#   set theme=/boot/grub/theme.txt
+# Setting that line is a bootloader-config concern (auto/config /
+# config/bootloaders).
+# -----------------------------------------------------------------------------
+title-text: ""
+desktop-image: "splash.png"
+desktop-color: "#0A0C12"
+message-color: "#6B768C"
+message-bg-color: "#0A0C12"
+terminal-font: "Unifont Regular 16"
+
++ boot_menu {
+    left               = 25%
+    top                = 42%
+    width              = 50%
+    height             = 40%
+    item_font          = "Unifont Regular 16"
+    selected_item_font = "Unifont Regular 16"
+    item_color         = "#6B768C"
+    selected_item_color = "#27E0C8"
+    item_height        = 28
+    item_padding       = 4
+    item_spacing       = 6
+    scrollbar          = false
+}
+
++ label {
+    top   = 86%
+    left  = 0
+    width = 100%
+    align = "center"
+    color = "#3A4459"
+    font  = "Unifont Regular 16"
+    text  =  "Corvid OS"
+}

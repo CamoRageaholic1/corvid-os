@@ -1,0 +1,63 @@
+#!/bin/sh
+# ============================================================================
+# 0700-enable-firstboot.hook.chroot  —  enable the first-boot finalizer (Dev int.)
+# ----------------------------------------------------------------------------
+# live-build CHROOT hook. Runs INSIDE the chroot on the build VM (never on this
+# macOS host — SPEC §4 rule 2). Its only job is to make sure
+# corvid-firstboot.service is WANTED by multi-user.target on the shipped image,
+# so it fires on the first boot of the live/installed system.
+#
+# The service unit + script themselves are shipped as static files via
+# config/includes.chroot (etc/systemd/system + usr/local/sbin) — this hook does
+# NOT create them, it only enables the unit.
+#
+# WHY the fallback: `systemctl enable` is the correct, canonical way to do this,
+# and it is chroot-safe because for a plain `WantedBy=` unit it only creates a
+# symlink (it does NOT talk to a running systemd/D-Bus, unlike `start`). BUT in
+# some minimal build chroots systemd/`systemctl` may be absent or refuse to run
+# (no /run, offline dbus). So we PREFER `systemctl enable` and fall back to
+# creating the exact same multi-user.target.wants symlink by hand — which is
+# byte-for-byte what `systemctl enable` would have produced.
+# ============================================================================
+set -e
+
+UNIT="corvid-firstboot.service"
+UNIT_SRC="/etc/systemd/system/${UNIT}"
+WANTS_DIR="/etc/systemd/system/multi-user.target.wants"
+
+echo "[0700-enable-firstboot] Ensuring ${UNIT} is enabled for first boot ..."
+
+# Make sure the script the unit runs is executable (it ships from includes.chroot,
+# whose mode is not guaranteed to survive every packing path).
+if [ -f /usr/local/sbin/corvid-firstboot.sh ]; then
+    chmod 0755 /usr/local/sbin/corvid-firstboot.sh
+else
+    echo "[0700-enable-firstboot][WARN] /usr/local/sbin/corvid-firstboot.sh missing; unit will no-op via ConditionPathExists." >&2
+fi
+
+if [ ! -f "${UNIT_SRC}" ]; then
+    echo "[0700-enable-firstboot][WARN] ${UNIT_SRC} not found; cannot enable. Check includes.chroot." >&2
+    exit 0
+fi
+
+enabled=0
+# Preferred approach: canonical systemctl enable (symlink-only for WantedBy units).
+if command -v systemctl >/dev/null 2>&1; then
+    if systemctl enable "${UNIT}" >/dev/null 2>&1; then
+        echo "[0700-enable-firstboot] Enabled ${UNIT} via 'systemctl enable'."
+        enabled=1
+    else
+        echo "[0700-enable-firstboot][WARN] 'systemctl enable' failed in chroot; using symlink fallback." >&2
+    fi
+fi
+
+# Fallback: create the multi-user.target.wants symlink manually. This is exactly
+# what 'systemctl enable' materializes for a unit whose [Install] section says
+# WantedBy=multi-user.target, so the installed system behaves identically.
+if [ "${enabled}" -eq 0 ]; then
+    mkdir -p "${WANTS_DIR}"
+    ln -sf "../${UNIT}" "${WANTS_DIR}/${UNIT}"
+    echo "[0700-enable-firstboot] Enabled ${UNIT} via manual wants symlink (${WANTS_DIR}/${UNIT})."
+fi
+
+echo "[0700-enable-firstboot] Done."

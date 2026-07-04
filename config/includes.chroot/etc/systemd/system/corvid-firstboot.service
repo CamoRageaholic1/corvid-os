@@ -1,0 +1,25 @@
+[Unit]
+Description=Corvid OS first-boot finalizer (docker group + rootless subid wiring)
+Documentation=https://github.com/CamoRageaholic1
+# The human account is created by Calamares at install (or is the live 'corvid'
+# user), so this must run after user sessions infrastructure is up. We also want
+# it after the local filesystems so /etc/subuid, /etc/subgid, /etc/passwd are
+# writable and final.
+After=systemd-user-sessions.service local-fs.target
+Wants=local-fs.target
+# Only meaningful the first time — the ExecStart script disables this unit at the
+# end, so the ConditionPathExists guard is belt-and-suspenders for a stale symlink.
+ConditionPathExists=/usr/local/sbin/corvid-firstboot.sh
+
+[Service]
+Type=oneshot
+# Do not linger in an 'active (exited)' state after the run — per the task spec.
+RemainAfterExit=no
+ExecStart=/usr/local/sbin/corvid-firstboot.sh
+# The script self-guards Docker absence and never hard-fails; a non-zero exit
+# should still not wedge the boot, so surface it but keep multi-user coming up.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,73 @@
+# Corvid OS -- base.list.chroot
+# ===========================================================================
+# CORE system only: the packages needed to bootstrap, boot live, get a
+# network, unlock encrypted persistence, and administer the box.
+#
+# OUT OF SCOPE here (do NOT add them to this file):
+#   * KDE Plasma / desktop / display manager .......... desktop.list.chroot
+#   * languages, docker, distrobox, editors ........... devstack.list.chroot
+#   * parrot-tools-full / pentest catalog ............. security.list.chroot
+#   * calamares installer ............................. calamares/
+#
+# The kernel is NOT listed here -- live-build installs it from
+# --linux-flavours generic (set in auto/config), i.e. linux-image-generic.
+# ===========================================================================
+
+# --- Live system runtime (boot=live, live-config, persistence) --------------
+live-boot
+live-config
+live-config-systemd
+
+# --- init + core services ---------------------------------------------------
+systemd-sysv
+dbus
+dbus-user-session
+
+# --- initramfs + encrypted-persistence support ------------------------------
+# cryptsetup is required for the "persistence-encryption=luks" boot param
+# (set in auto/config --bootappend-live) to actually unlock a LUKS persistence
+# volume at live boot.
+initramfs-tools
+cryptsetup
+cryptsetup-initramfs
+
+# --- networking -------------------------------------------------------------
+network-manager
+iproute2
+iputils-ping
+wget
+curl
+openssh-client
+# ca-certificates + apt-transport-https: needed for the HTTPS Parrot repo
+# (deb.parrot.sh) to validate during apt. ca-certificates is also pulled early
+# via --debootstrap-options in auto/config; listed here for the final system.
+ca-certificates
+apt-transport-https
+gnupg
+
+# --- admin basics -----------------------------------------------------------
+sudo
+less
+nano
+procps
+psmisc
+lsof
+pciutils
+usbutils
+
+# --- locale + console -------------------------------------------------------
+locales
+console-setup
+keyboard-configuration
+kbd
+
+# --- disk / filesystem tooling (base; also relied on by the installer) ------
+parted
+gdisk
+dosfstools
+e2fsprogs
+
+# --- hardware boot support --------------------------------------------------
+# Broad firmware so the live ISO boots on real metal (Wi-Fi/GPU/NIC blobs).
+# Big, but SPEC accepts a large image.
+linux-firmware

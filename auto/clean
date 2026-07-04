@@ -1,0 +1,11 @@
+#!/bin/sh
+# Corvid OS -- auto/clean
+# Conventional live-build wrapper. Runs "lb clean" then removes the generated
+# config stage-marker files and the build log, returning the tree to a clean
+# checkout. Runs ON THE BUILD VM only. "noauto" stops recursive re-sourcing.
+set -e
+
+lb clean noauto "${@}"
+
+rm -f config/binary config/bootstrap config/chroot config/common config/source
+rm -f build.log

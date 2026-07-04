@@ -1,0 +1,39 @@
+# Corvid OS - AppArmor local overrides
+# Security DNA component
+#
+# This directory holds SITE-LOCAL additions to the shipped AppArmor profiles.
+# A stock profile in /etc/apparmor.d/<name> ends with a line like:
+#
+#     include if exists <local/<name>>
+#
+# ...so anything you put in a file here named EXACTLY after the profile is
+# merged in WITHOUT editing (or fighting future package updates to) the
+# upstream profile. Files in this directory that are not include-referenced by
+# some profile are simply ignored by apparmor_parser - this README included.
+#
+# ---------------------------------------------------------------------------
+# WHY THIS EXISTS ON A PENTEST DISTRO
+# ---------------------------------------------------------------------------
+# We enforce profiles (see hook 0200). Occasionally a confined system daemon a
+# pentester actually needs - e.g. tcpdump reading from an odd path, or a tool
+# that shells out - trips its profile. The right fix is a narrow local grant
+# here, NOT flipping the whole profile to complain mode. Keep grants minimal
+# and specific.
+#
+# ---------------------------------------------------------------------------
+# EXAMPLE (commented; copy into a file named for the target profile to use)
+# ---------------------------------------------------------------------------
+# File: /etc/apparmor.d/local/usr.bin.tcpdump
+# -------------------------------------------------
+#   # Let tcpdump write pcaps into the operator's capture dir.
+#   owner /home/*/captures/** rw,
+#   /home/*/captures/ rw,
+# -------------------------------------------------
+#
+# After adding a local override on the live/installed system, reload it:
+#   sudo apparmor_parser -r /etc/apparmor.d/usr.bin.tcpdump
+# or reload everything:
+#   sudo systemctl reload apparmor
+#
+# Inspect enforcement state any time with:
+#   sudo aa-status

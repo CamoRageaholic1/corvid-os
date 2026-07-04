@@ -1,0 +1,27 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Install Corvid OS
+GenericName=System Installer
+Comment=Install Corvid OS to disk (LUKS full-disk encryption by default)
+Exec=pkexec calamares
+TryExec=calamares
+Icon=corvid
+Terminal=false
+StartupNotify=true
+Categories=Qt;System;Settings;
+Keywords=install;installer;calamares;disk;
+# ---------------------------------------------------------------------------
+# Desktop-icon TRUST note (KDE Plasma):
+# Plasma will NOT run a .desktop launcher dropped on the Desktop until the file
+# is either (a) marked executable (chmod +x) AND owned/trusted, or (b) flagged
+# trusted via KDE's KAuthorized/"trusted" metadata. On first double-click of an
+# un-trusted launcher Plasma shows the "Untrusted application launcher" dialog
+# instead of running it. This file being in /etc/skel means every new user gets
+# a copy in ~/Desktop, but skel copies preserve 0644 (not executable), so the
+# trust prompt will appear until something marks it +x / trusted.
+#
+# This comment is informational only. The actual chmod/trust step belongs in
+# 0600-branding.hook.chroot or a first-boot step, NOT here. Do not rely on
+# this comment to grant trust.
+# ---------------------------------------------------------------------------

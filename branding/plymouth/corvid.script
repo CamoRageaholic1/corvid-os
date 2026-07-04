@@ -1,0 +1,91 @@
+// =============================================================================
+// Corvid OS — Plymouth boot splash (script module)
+// =============================================================================
+// Renders a dark branded background, a centered logo that gently pulses, a
+// small progress row, boot messages, and a LUKS passphrase prompt (this distro
+// ships full-disk encryption by DEFAULT, so the passphrase dialog matters).
+//
+// Assets (staged next to this file by generate-assets.sh):
+//   background.png  1920x1080 branded wallpaper
+//   logo.png        512x512 raven wordmark
+// =============================================================================
+
+// ---- geometry ---------------------------------------------------------------
+screen_width  = Window.GetWidth();
+screen_height = Window.GetHeight();
+
+// ---- background -------------------------------------------------------------
+bg_image  = Image("background.png");
+bg_scaled = bg_image.Scale(screen_width, screen_height);
+bg_sprite = Sprite(bg_scaled);
+bg_sprite.SetPosition(0, 0, 0);
+
+// ---- logo (centered, slightly above middle) ---------------------------------
+logo_image  = Image("logo.png");
+logo_sprite = Sprite(logo_image);
+logo_x = screen_width  / 2 - logo_image.GetWidth()  / 2;
+logo_y = screen_height / 2 - logo_image.GetHeight() / 2 - 60;
+logo_sprite.SetPosition(logo_x, logo_y, 1);
+
+// ---- gentle pulse on the logo ----------------------------------------------
+progress = 0;
+fun refresh_callback() {
+    progress++;
+    // opacity oscillates smoothly between ~0.75 and 1.0
+    opacity = 0.875 + 0.125 * Math.Sin(progress / 18);
+    logo_sprite.SetOpacity(opacity);
+}
+Plymouth.SetRefreshFunction(refresh_callback);
+
+// ---- boot progress (percentage tracked for the refresh pulse) ---------------
+boot_progress = 0;
+fun progress_callback(duration, pct) {
+    boot_progress = pct;
+}
+Plymouth.SetBootProgressFunction(progress_callback);
+
+// ---- boot / status messages -------------------------------------------------
+message_sprite = Sprite();
+message_sprite.SetPosition(screen_width / 2 - 200, screen_height * 0.72, 5);
+fun message_callback(text) {
+    my_image = Image.Text(text, 0.42, 0.46, 0.55);
+    message_sprite.SetImage(my_image);
+}
+Plymouth.SetMessageFunction(message_callback);
+
+// =============================================================================
+// LUKS / password prompt  (full-disk encryption is the default install path)
+// =============================================================================
+prompt_sprite   = Sprite();
+bullets_sprite  = Sprite();
+
+fun display_password_callback(prompt, bullets) {
+    // prompt label
+    prompt_image = Image.Text(prompt, 0.91, 0.93, 0.96);
+    prompt_sprite.SetImage(prompt_image);
+    prompt_sprite.SetPosition(
+        screen_width / 2 - prompt_image.GetWidth() / 2,
+        screen_height * 0.62, 6);
+
+    // masked bullets for the typed passphrase
+    bullet_str = "";
+    i = 0;
+    while (i < bullets) {
+        bullet_str += "*";
+        i++;
+    }
+    bullets_image = Image.Text(bullet_str, 0.15, 0.88, 0.78);
+    bullets_sprite.SetImage(bullets_image);
+    bullets_sprite.SetPosition(
+        screen_width / 2 - bullets_image.GetWidth() / 2,
+        screen_height * 0.66, 6);
+}
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+
+// clear the password UI when we return to normal splash
+fun display_normal_callback() {
+    prompt_sprite.SetOpacity(0);
+    bullets_sprite.SetOpacity(0);
+    logo_sprite.SetOpacity(1);
+}
+Plymouth.SetDisplayNormalFunction(display_normal_callback);

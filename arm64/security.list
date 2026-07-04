@@ -1,0 +1,22 @@
+# =============================================================================
+# Corvid OS arm64 / Pi 5  -  Kali security repo APT source
+# -----------------------------------------------------------------------------
+# ARM analog of the amd64 config/archives/parrot.list.chroot.
+# The Pi build sources its pentest catalog from Kali's arm64 repo (Parrot is
+# amd64-centric; see arm64/README.md and SPEC rule 4). Pinned LOW by
+# arm64/parrot-or-kali-pin.pref so it never overrides the Ubuntu/noble base.
+#
+# The signed-by path expects the Kali archive keyring at:
+#   /usr/share/keyrings/kali-archive-keyring.gpg
+# Provide it via the `kali-archive-keyring` package, or fetch and place the key
+# during the build (documented in arm64/README.md, "Open items").
+#
+# `arch=arm64` scopes this source to the ARM build so it is inert if the line is
+# ever seen by an amd64 tree.
+#
+# Deploy target:
+#   - live-build (Path A): copy to config/archives/kali.list.chroot
+#   - Pi image  (Path B):  copy to /etc/apt/sources.list.d/kali.list
+# =============================================================================
+
+deb [arch=arm64 signed-by=/usr/share/keyrings/kali-archive-keyring.gpg] http://http.kali.org/kali kali-rolling main contrib non-free non-free-firmware

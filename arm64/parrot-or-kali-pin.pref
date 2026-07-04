@@ -1,0 +1,36 @@
+# =============================================================================
+# Corvid OS arm64 / Pi 5  -  APT pin preferences
+# -----------------------------------------------------------------------------
+# ARM analog of the amd64 config/archives/parrot.pref.chroot.
+#
+# On ARM the security tools come from KALI's arm64 repo, NOT Parrot (Parrot's
+# repo is amd64-centric; see arm64/README.md and SPEC rule 4). The pinning
+# discipline is identical to amd64: keep the Ubuntu/noble LTS base authoritative,
+# and pin the Kali repo LOW so it only supplies security packages requested by
+# name. Kali must NEVER win a version race for core libraries (glibc/libc6,
+# python3, systemd, etc). This is the single rule that keeps the LTS base stable.
+#
+# Deploy target:
+#   - live-build (Path A): copy to config/archives/kali.pref.chroot
+#   - Pi image  (Path B):  copy to /etc/apt/preferences.d/kali.pref
+# =============================================================================
+
+# --- Base: Ubuntu/noble stays the default source for everything --------------
+Package: *
+Pin: release o=Ubuntu
+Pin-Priority: 900
+
+# --- Kali arm64 tools: reachable, but never override the base ----------------
+# Kali's Release file carries Origin/Label "Kali" and Suite "kali-rolling".
+# Priority 100 = installable/upgradable only when explicitly requested, and
+# never preferred over the pinned-high base packages.
+Package: *
+Pin: release o=Kali
+Pin-Priority: 100
+
+# --- Optional hard guardrail --------------------------------------------------
+# Belt-and-suspenders: forbid Kali from ever supplying these core packages, even
+# if a future metapackage tries to pull a newer one. Uncomment to enforce.
+# Package: libc6 libc-bin glibc-* python3 python3-minimal systemd udev
+# Pin: release o=Kali
+# Pin-Priority: -1
