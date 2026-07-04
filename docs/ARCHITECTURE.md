@@ -6,9 +6,10 @@ explains the reasoning and the layout behind it.
 
 ## The one-sentence model
 
-Corvid is a Kubuntu 24.04 LTS base with Parrot's security repo layered on through
-strict APT pinning, assembled into a KDE Plasma live image by Debian `live-build`,
-and configured by a set of ordered build hooks.
+Corvid is a Kubuntu 24.04 LTS base with a curated security toolset from Ubuntu's own
+repositories (and Kali pinned as a fallback for the gaps), a full dev stack, and
+built-in AI-agent tooling, assembled into a KDE Plasma live image by Debian
+`live-build` and configured by a set of ordered build hooks.
 
 ## Build flow (live-build)
 
@@ -22,46 +23,64 @@ lb config   -->  materialize the build tree from auto/config
 bootstrap   -->  debootstrap a minimal Kubuntu 24.04 (noble) chroot
    |
    v
-chroot      -->  add archives (Parrot repo + pin + key)
+chroot      -->  add archives (Kali fallback repo + pin + key)
    |             install the package lists (base/desktop/devstack/security)
    |             run config/hooks/live/* in numeric order
    v
 binary      -->  add the installer (Calamares), ISO boot branding,
    |             assemble the squashfs and bootloader
    v
-corvid-amd64.iso   (~8-9 GB)
+corvid-amd64.iso   (UEFI-bootable, via the grub-efi + xorriso remaster)
 ```
 
 Two rules govern this pipeline and appear throughout the repo:
 
-1. **APT pinning is mandatory.** The base is authoritative; Parrot is a
-   low-priority add-on source. Details below.
+1. **APT pinning is mandatory.** The base is authoritative; the Kali fallback repo is
+   a low-priority add-on source used only for tools Ubuntu does not package. Details
+   below.
 2. **This repo holds configuration only.** No one runs `lb build` on a laptop. The
-   build happens on a provisioned Proxmox VM (see [`BUILD.md`](BUILD.md)). Scripts
-   are validated with `bash -n` and shellcheck, not by executing the build.
+   build happens on any Ubuntu 24.04 Linux host, such as a provisioned Proxmox VM (see
+   [`BUILD.md`](BUILD.md)). Scripts are validated with `bash -n` and shellcheck, not by
+   executing the build.
 
-## Why Kubuntu base + Parrot pinning
+## Why Kubuntu base + a curated toolset with a Kali fallback
 
 The core design tension is "stable daily driver" versus "current security
-toolset". Corvid resolves it by separating the two into different layers with
-different update dynamics, held apart by APT pinning.
+toolset". Corvid resolves it by drawing the toolset from the base's own
+repositories wherever possible, and reaching to a pinned Kali fallback only for
+the tools the base lacks.
 
 - **Base: Kubuntu 24.04 LTS (noble).** LTS gives years of support and a base that
   does not move under you. Starting from Kubuntu specifically (rather than stock
   Ubuntu plus a desktop) means Plasma is already correct, so the desktop is not a
   retrofit.
-- **Tools: Parrot repo, pinned low.** Parrot is Debian-based, not Ubuntu-based, so
-  its packages are close enough to install against a noble base but different
-  enough that they must never be allowed to satisfy core dependencies. The pin
-  (Ubuntu/noble at Pin-Priority 900+, Parrot at ~100) means Parrot packages are
-  installable only when named explicitly, and can never win a version race for
-  `glibc`/`libc6`, `python3`, `systemd`, or other base libraries. That single
-  discipline is what keeps the LTS base from breaking. The Parrot GPG key is
-  added alongside the source. This lives under `config/archives/`.
+- **Tools: curated from Ubuntu's own repos.** Ubuntu already packages most of the
+  catalog Corvid wants (nmap, sqlmap, hydra, john, aircrack-ng, wireshark,
+  hashcat, gobuster, nikto, binwalk, and more). Installing these from the base's
+  own repositories means they move in lockstep with the base and carry no
+  cross-distro dependency risk at all.
+- **Fallback: Kali repo, pinned low.** For the handful of tools Ubuntu does not
+  package, Kali's repo is added as a fallback. Kali is Debian-based, not
+  Ubuntu-based, so its packages are close enough to install against a noble base
+  but different enough that they must never be allowed to satisfy core
+  dependencies. The pin (Ubuntu/noble at Pin-Priority 900+, Kali at ~100) means
+  Kali packages are installable only when named explicitly, and can never win a
+  version race for `glibc`/`libc6`, `python3`, `systemd`, or other base libraries.
+  That single discipline is what keeps the LTS base from breaking. The Kali
+  archive GPG key is added alongside the source. This lives under
+  `config/archives/`.
 
-The security tools are pulled in as the **full** metapackage
-(`parrot-tools-full` or equivalent). This is deliberately large, and the roughly
-8 to 9 GB ISO that results is expected and accepted per the spec.
+Because the bulk of the toolset comes straight from the base's repositories, the
+resulting ISO is sized by the curated set rather than by a full pentest catalog.
+
+### Why not `parrot-tools-full`
+
+The original plan layered Parrot's `parrot-tools-full` metapackage on the Ubuntu
+base via pinning. It was dropped because it does not work cleanly on an Ubuntu
+base: Parrot's current `lory` repository does not even carry the tools
+metapackage, and Parrot's Debian-built tools conflict with the libraries Ubuntu
+ships. Sourcing the catalog from Ubuntu's own repos, with Kali only as a narrow
+named fallback, avoids that conflict entirely.
 
 ### Approaches that were rejected
 
@@ -72,12 +91,13 @@ The security tools are pulled in as the **full** metapackage
   upstream to lean on. Rejected.
 - **Snaps for the toolset.** Snap packaging of security tools is sparse,
   inconsistent, and adds confinement and startup friction that fights the way
-  pentest tools expect to touch the network and filesystem. The APT + pinning
-  route reuses Parrot's existing, well-maintained catalog directly. Rejected in
-  favor of native `.deb` packages from the pinned Parrot repo.
+  pentest tools expect to touch the network and filesystem. Native `.deb`
+  packages from Ubuntu's own repos (and the pinned Kali fallback) install
+  directly and behave as the tools expect. Rejected in favor of native packages.
 - **Just shipping Kali or Parrot as-is.** That would give the tools but not the
-  stable LTS base, the specific dev-stack curation, or the branding and hardening
-  posture Corvid defines. The point of Corvid is the combination.
+  stable LTS base, the specific dev-stack curation, the AI-agent tooling, or the
+  branding and hardening posture Corvid defines. The point of Corvid is the
+  combination.
 
 ## Hook numbering scheme
 
@@ -90,7 +110,7 @@ the pipeline is expressed by each hook's number prefix.
 |---|---|
 | `0100`-`0399` | Security: hardening (sysctl), AppArmor enforce, AnonSurf graft |
 | `0400`-`0499` | Dev-stack configuration |
-| `0500`-`0599` | CZD-Tools integration |
+| `0500`-`0599` | CZD-Tools integration and the `corvid-ai-setup` AI-agent installer |
 | `0600`-`0699` | Branding |
 
 Ordering matters: hardening and tooling land before branding, and the numeric
@@ -107,11 +127,11 @@ has a clear purpose and can be reasoned about in isolation:
 | `base.list.chroot` | base system packages |
 | `desktop.list.chroot` | KDE Plasma desktop |
 | `devstack.list.chroot` | language toolchains, Docker, distrobox, editors |
-| `security.list.chroot` | the Parrot tools metapackage |
+| `security.list.chroot` | curated security tools (Ubuntu repos) + named Kali fallbacks |
 
-Splitting the security metapackage into its own list keeps the "big, pinned,
-comes-from-Parrot" surface isolated from the base and desktop, which come from
-Ubuntu.
+Splitting the security list out keeps the security surface (including the few
+packages that come from the pinned Kali fallback) isolated and easy to reason
+about, separate from the base and desktop.
 
 ## Where each subsystem lives
 
@@ -121,7 +141,7 @@ corvid/
   auto/                                    live-build config/build/clean wrappers
   provisioning/proxmox-build-vm.sh         stand up the Ubuntu 24.04 build VM
   config/
-    archives/                              Parrot repo list + pin + GPG key
+    archives/                              Kali fallback repo list + pin + GPG key
     package-lists/                         base / desktop / devstack / security
     hooks/live/                            ordered build-time config (numbered)
     includes.chroot/
@@ -150,19 +170,33 @@ launcher plus a Plasma menu entry. The launcher is relocatable: the read-only
 program sits at `/opt/czd-tools`, while per-user state lands in `~/CZD-Tools` on
 first run. See `config/includes.chroot/opt/czd-tools/README.corvid.md`.
 
+### AI-agent tooling is installed on demand, not baked in
+
+Corvid's flagship convenience is `corvid-ai-setup`: a menu that offers to install
+AI coding agents and local LLM runtimes so a user never has to hunt for the
+current install command for each one. It covers Claude Code, OpenAI Codex CLI,
+Google Gemini CLI, Aider, Ollama, LM Studio, and Hermes (Nous Research). The build
+hook (in the `0500`-`0599` band, alongside CZD-Tools) drops the `corvid-ai-setup`
+launcher on PATH and adds a Plasma menu entry; the agents and runtimes themselves
+are fetched on demand when the user runs it, not preinstalled into the image. That
+keeps the ISO lean and lets each agent pull its own current version at first use.
+This is a feature Corvid offers its users; it is not part of how Corvid itself is
+built.
+
 ### arm64 is a documented variant, not a v1.0 deliverable
 
-The Pi 5 build reuses the same "stable base plus pinned security repo" idea but
-swaps Parrot for **Kali's** arm64 repo, because Parrot's arm64 coverage is thin.
-It is intentionally kept separate so it never affects the amd64 v1.0 image. Design
-and config stubs are under `arm64/`.
+The Pi 5 build reuses the same "stable base plus a pinned Kali fallback" idea, with
+**Kali's** arm64 repo as the fallback source (Kali maintains strong arm64
+coverage). It is intentionally kept separate so it never affects the amd64 v1.0
+image. Design and config stubs are under `arm64/`.
 
 ## Security posture (v1)
 
 Applied at build time, present on first boot:
 
-- **AnonSurf / Tor** for system-wide anonymized routing (a Parrot package grafted
-  onto the Ubuntu base, with its systemd unit and firewall rules wired explicitly).
+- **AnonSurf / Tor** for system-wide anonymized routing (grafted onto the Ubuntu
+  base from ParrotSec's upstream source, with its systemd unit and firewall rules
+  wired explicitly).
 - **LUKS full-disk encryption by default** in the Calamares installer, plus
   encrypted live persistence.
 - **Hardened kernel sysctl** profile and **AppArmor in enforce mode**.

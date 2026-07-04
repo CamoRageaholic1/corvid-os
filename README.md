@@ -18,14 +18,17 @@
   <img src="https://img.shields.io/badge/license-MIT-blue">
 </p>
 
-A security-hardened, coding-first Linux distribution for advanced users. Ubuntu LTS
-underneath for stability, Parrot's security tooling on top for the pentest catalog,
-shipped as a clean KDE Plasma desktop. Built entirely with Debian `live-build`, and
-the whole build lives in this repository so the image is fully reproducible from
-source.
+Corvid OS is a security-minded, coding-first, AI-agent-ready daily driver. Ubuntu LTS
+underneath for stability, KDE Plasma on top, a curated security toolset drawn from
+Ubuntu's own repositories, a full development stack, and built-in tooling that installs
+AI coding agents and local LLM runtimes in one step. Built entirely with Debian
+`live-build`, and the whole build lives in this repository so the image is fully
+reproducible from source.
 
-> **Status:** pre-release. Corvid OS is under active development and testing; the
-> first public ISO has not shipped yet. The build specification is [`SPEC.md`](SPEC.md).
+> **Status:** pre-release. The smoke ISO has been built and boot-tested in a UEFI
+> virtual machine: it reaches the KDE Plasma desktop with the Calamares installer
+> present. A full-featured build is in progress, and the first public ISO has not
+> shipped yet. The build specification is [`SPEC.md`](SPEC.md).
 
 ---
 
@@ -41,23 +44,32 @@ Most people who do security work end up choosing between two compromises:
   posture out of the box.
 
 Corvid takes a third path. It starts from **Kubuntu 24.04 LTS**, a base that is
-stable, familiar, and supported for years, then layers Parrot's security repository
-on top through strict **APT pinning** so the tools are present without the base ever
-drifting. The result is one image that is a serious workstation and a full security
-lab at the same time, with a hardened posture applied by default rather than
+stable, familiar, and supported for years, then adds a **curated security toolset
+drawn from Ubuntu's own repositories**, with **Kali configured as a pinned fallback**
+for the handful of tools Ubuntu does not carry. The tools are present without the base
+ever drifting. The result is one image that is a serious workstation and a full
+security lab at the same time, with a hardened posture applied by default rather than
 assembled by hand.
 
-It is aimed at advanced and security-minded coders: people who want the pentest
-catalog, a complete development stack, disk encryption, and kernel hardening on day
-one, on a base they can trust to stay put.
+It is aimed at advanced and security-minded coders: people who want a curated pentest
+toolset, a complete development stack, built-in AI agent tooling, disk encryption, and
+kernel hardening on day one, on a base they can trust to stay put.
 
 ## Features
 
 - **KDE Plasma desktop.** Polished, fast, and highly configurable. Corvid starts from
   Kubuntu so Plasma is correct from the first boot rather than retrofitted.
-- **The full Parrot security toolset.** The complete `parrot-tools-full` metapackage,
-  pinned against the fixed LTS base so tool updates never drag the core system with
-  them. Recon, web, network, forensics, exploitation, the lot.
+- **A curated security toolset.** Recon, web, network, forensics, and exploitation
+  tools installed from Ubuntu's own repositories (nmap, sqlmap, hydra, john,
+  aircrack-ng, wireshark, hashcat, gobuster, nikto, binwalk, and more), with **Kali
+  configured as a pinned fallback** for the tools Ubuntu does not package. Everything
+  is pinned against the fixed LTS base so tool updates never drag the core system with
+  them.
+- **Built-in AI agent installer.** A `corvid-ai-setup` menu offers to install AI
+  coding agents and local LLM runtimes in one step, so you never have to hunt for the
+  install commands: Claude Code, OpenAI Codex CLI, Google Gemini CLI, Aider, Ollama,
+  LM Studio, and Hermes (Nous Research). Run `corvid-ai-setup` from a terminal or
+  launch it from the Plasma menu.
 - **AnonSurf and Tor.** Grafted onto the Ubuntu base with its systemd unit and
   firewall rules wired up explicitly, for system-wide anonymized routing on demand.
 - **LUKS full-disk encryption by default.** The Calamares installer defaults to LUKS
@@ -80,18 +92,20 @@ one, on a base they can trust to stay put.
 Corvid is assembled by Debian `live-build`. The pipeline is:
 
 1. **Bootstrap** a Kubuntu 24.04 (noble) base into a chroot.
-2. **Add the Parrot repo, pinned.** Ubuntu/noble is pinned high (authoritative); Parrot
-   is pinned low so only explicitly named security packages are pulled from it, never
-   core libraries. This one rule is what keeps the LTS base intact.
+2. **Add a pinned Kali fallback repo.** Ubuntu/noble is pinned high (authoritative);
+   Kali is pinned low so only the explicitly named security packages Ubuntu lacks are
+   pulled from it, never core libraries. This one rule is what keeps the LTS base
+   intact.
 3. **Install package lists.** Split by concern: base, desktop (KDE), devstack, and
-   security (the Parrot metapackage).
+   security (curated from Ubuntu, with a few named Kali fallbacks).
 4. **Run build hooks** to configure the system. Hooks are numbered to fix their load
-   order: hardening and AnonSurf, dev-stack configuration, CZD-Tools, then branding.
+   order: hardening and AnonSurf, dev-stack configuration, the AI-agent installer and
+   CZD-Tools, then branding.
 5. **Add the installer.** Calamares, configured for LUKS full-disk encryption by
    default and rebranded for KDE.
-6. **Emit a bootable ISO** (roughly 8 to 9 GB, by design, given the full toolset).
+6. **Emit a bootable ISO,** UEFI-bootable via the grub-efi + xorriso remaster.
 
-The build runs on a dedicated Ubuntu 24.04 VM, never on a developer laptop, so results
+The build runs on any Ubuntu 24.04 Linux host, never on a developer laptop, so results
 are clean and repeatable. Full detail is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Download
@@ -125,8 +139,8 @@ just one convenience, not a requirement.
 
 ## Roadmap
 
-Planned work, including the **arm64 / Raspberry Pi 5** variant (which sources its tools
-from Kali's arm64 repo instead of Parrot) and the deferred **Secure Boot / MOK**
+Planned work, including the **arm64 / Raspberry Pi 5** variant (which sources its
+fallback tools from Kali's arm64 repo) and the deferred **Secure Boot / MOK**
 enrollment path, is tracked in [`docs/ROADMAP.md`](docs/ROADMAP.md). The ARM variant's
 design and config stubs already live under [`arm64/`](arm64/).
 
@@ -139,9 +153,9 @@ permission to test. Use it lawfully and responsibly.
 ## License
 
 The Corvid OS build configuration in this repository is released under the MIT License
-(see [`LICENSE`](LICENSE)). The software it assembles &mdash; Ubuntu, KDE Plasma, the
-Parrot security tools, and other components &mdash; remains under its own respective
-upstream licenses.
+(see [`LICENSE`](LICENSE)). The software it assembles (Ubuntu, KDE Plasma, the curated
+security tools, and other components) remains under its own respective upstream
+licenses.
 
 ---
 

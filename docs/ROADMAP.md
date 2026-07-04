@@ -2,14 +2,16 @@
 
 This document covers the things Corvid **intends** to do but does not ship in
 version 1.0. Everything here is a plan, not a promise made by the current ISO. It
-gathers the security-DNA future work — Secure Boot / MOK and the encrypted live
-persistence usage guide — alongside the pentest hardening tradeoffs note and a
+gathers the security-DNA future work (Secure Boot / MOK and the encrypted live
+persistence usage guide) alongside the pentest hardening tradeoffs note and a
 summary of the arm64 / Pi 5 variant, so the whole roadmap lives in one place.
 
-The v1.0 security features that ARE shipping (for contrast) are: AnonSurf/Tor,
-a hardened kernel sysctl profile, AppArmor in enforce mode, a LUKS-by-default
-installer, and encrypted live persistence support. Those are done. Everything
-below is future work.
+The v1.0 features that ARE shipping (for contrast) are: the curated security
+toolset (drawn from Ubuntu's own repos, with Kali pinned as a fallback for the
+gaps), the built-in `corvid-ai-setup` AI-agent installer, AnonSurf/Tor, a hardened
+kernel sysctl profile, AppArmor in enforce mode, a LUKS-by-default installer, and
+encrypted live persistence support. Those are done. Everything below is future
+work.
 
 ---
 
@@ -143,21 +145,23 @@ shipped. It slots into the `config/bootloaders/` directory the SPEC reserves
 in the `arm64/` directory. Summarized here so the whole roadmap lives in one
 place.)
 
-The important security-relevant fact, restated from the SPEC so it does not get
-lost: the Pi 5 build does **not** use the Parrot repository. Parrot's package
-repo is built for amd64 (Intel/AMD 64-bit) machines and has poor coverage for
-arm64 (the 64-bit ARM architecture the Pi 5 uses). The arm64 variant therefore
-sources its security tooling from **Kali Linux's arm64 repository**, which is
-built and maintained for ARM boards specifically.
+The important architecture fact, restated from the SPEC so it does not get lost:
+both builds use the same "curated Ubuntu toolset plus a pinned Kali fallback"
+approach, and the only difference is which Kali repo the fallback points at. The
+amd64 build's fallback is Kali's amd64 (Intel/AMD 64-bit) repo; the Pi 5 build's
+fallback is **Kali Linux's arm64 repository** (the 64-bit ARM architecture the
+Pi 5 uses), which Kali builds and maintains for ARM boards specifically. Ubuntu
+also carries most of the curated toolset for arm64, so the base half of the recipe
+is unchanged.
 
 Consequences to plan for:
 
-- The APT pinning file for arm64 pins Kali (not Parrot) as the low-priority
-  security source, using the same "base wins, security tools pulled explicitly"
+- The APT pinning file for arm64 pins Kali's **arm64** repo as the low-priority
+  fallback source, using the same "base wins, fallback tools pulled explicitly"
   logic the amd64 pinning uses.
-- AnonSurf on arm64: Kali does not package AnonSurf. On the Pi 5 variant,
-  AnonSurf comes from the git fallback path (the same ParrotSec source the
-  amd64 hook 0300 already falls back to), or is replaced by a Kali-native
+- AnonSurf on arm64: AnonSurf is grafted from ParrotSec's upstream source on both
+  architectures (it is not in Ubuntu's or Kali's repos). The arm64 open item is
+  confirming that git graft builds cleanly on arm64, or substituting a Kali-native
   transparent-Tor approach. This is an open item for the v1.1 cycle.
 - Secure Boot does not apply the same way on the Pi 5; the Pi uses its own
   bootloader chain, so the MOK section above is amd64/UEFI only.
@@ -324,46 +328,53 @@ kiosk that must never run anything interesting."
 
 This section is upkeep work that keeps existing v1 features building over time.
 Nothing here is a new feature; it is the recurring housekeeping that a layered
-distro (Ubuntu LTS base + Parrot security repo + a third-party PPA) needs so the
-image does not silently stop building when an upstream signing key expires or a
-suite name changes. Each item below is a "when this happens, do this" note.
+distro (Ubuntu LTS base + a curated toolset + a pinned Kali fallback repo + a
+third-party PPA) needs so the image does not silently stop building when an
+upstream signing key expires or a repo's libraries drift. Each item below is a
+"when this happens, do this" note.
 
-### M.1 Rotate the Parrot archive signing key before it expires
+### M.1 Rotate the Kali archive signing key if it rotates or expires
 
 **Why this matters, in plain terms:** APT (the package manager) only trusts a
 repository if the repository's release files are signed by a GPG key APT already
-holds. Corvid ships the Parrot archive key (in `config/archives/`) so the pinned
-Parrot security packages install without "the following signatures were invalid"
-errors. GPG keys carry an **expiry date**. Once the key expires, APT rejects the
-Parrot repo and every `parrot-tools-*` install (and therefore `lb build`) fails
-with an `EXPKEYSIG` / "key has expired" error, even though nothing else changed.
+holds. Corvid ships the Kali archive key (in `config/archives/`) so the pinned
+Kali fallback packages install without "the following signatures were invalid"
+errors. GPG keys can expire, and Kali has rotated its archive signing key before
+(the well-known February 2022 rotation forced every Kali user to install a fresh
+key). Once the shipped key expires or is superseded, APT rejects the Kali repo and
+any tool pulled from the Kali fallback (and therefore `lb build`, if such a tool is
+on the security list) fails with an `EXPKEYSIG` / "key has expired" or `NO_PUBKEY`
+error, even though nothing else changed.
 
 **The key we currently trust:**
 
-- Fingerprint: `B711 8223 4655 2E4D 92DA 02DF 7A82 86AF 0E81 EE4A`
-- Expiry to watch: **2028-11-03**
+- Fingerprint: `44C6 513A 8E4F B3D3 0875 F758 ED44 4FF0 7D8D 0BF6`
+  (key ID `ED444FF07D8D0BF6`, "Kali Linux Repository <devel@kali.org>")
+- Expiry: record the shipped key's actual expiry here when it is staged, and
+  verify it out-of-band against Kali's official docs (`https://www.kali.org/`)
+  before trusting it.
 
-**What to do (well before that date, treat ~2028-08 as the trigger):**
+**What to do (treat any Kali key-rotation announcement, or an approaching expiry,
+as the trigger):**
 
 1. Confirm the fingerprint and expiry of the key Corvid currently ships:
    ```
-   gpg --show-keys --with-fingerprint config/archives/parrot.key.chroot
+   gpg --show-keys --with-fingerprint config/archives/kali.key.chroot
    ```
-   (Substitute the actual filename used for the Parrot key in
-   `config/archives/`.) Verify the fingerprint matches the one above before
-   trusting anything you fetch.
-2. Obtain the refreshed/rotated Parrot archive key from Parrot's official
-   channel and verify its fingerprint out-of-band. Do **not** blindly replace
-   the file with whatever a mirror serves. If Parrot rotates to a NEW key with a
-   new fingerprint, record the new fingerprint here in this doc so the next
-   maintainer can verify against it.
+   (Substitute the actual filename used for the Kali key in `config/archives/`.)
+   Verify the fingerprint matches the one above before trusting anything you fetch.
+2. Obtain the refreshed/rotated Kali archive key from Kali's official channel and
+   verify its fingerprint out-of-band. Do **not** blindly replace the file with
+   whatever a mirror serves. If Kali rotates to a NEW key with a new fingerprint,
+   record the new fingerprint here in this doc so the next maintainer can verify
+   against it.
 3. Replace the key file in `config/archives/` (same filename already wired into
    the pinning setup so no other file needs editing), commit it, and note the new
-   expiry date in this section.
-4. Rebuild on the Proxmox VM and confirm `apt-get update` inside the chroot shows
-   no `EXPKEYSIG`/expired-key warning for the Parrot repo.
+   fingerprint/expiry in this section.
+4. Rebuild on the build host and confirm `apt-get update` inside the chroot shows
+   no `EXPKEYSIG`/expired-key or `NO_PUBKEY` warning for the Kali repo.
 
-> Note: the Parrot key + pinning live in `config/archives/`. This section is the
+> Note: the Kali key + pinning live in `config/archives/`. This section is the
 > procedure; the actual key swap is a change to that directory.
 
 ### M.2 The mozillateam PPA key may also rotate
@@ -371,9 +382,9 @@ with an `EXPKEYSIG` / "key has expired" error, even though nothing else changed.
 **Why this matters:** Corvid also trusts the **mozillateam** PPA key, staged at
 `config/archives/mozillateam.key.chroot`. A PPA (Personal Package Archive) is a
 third-party Ubuntu repo; this one is the standard source for a non-Snap Firefox
-(and related Mozilla builds) on the Ubuntu base. Like the Parrot key, this PPA
-key can be rotated or expire upstream, and when it does, APT refuses the PPA and
-any package pulled from it fails to install during the build.
+(and related Mozilla builds) on the Ubuntu base. Just like the Kali archive key
+(M.1), this PPA key can be rotated or expire upstream, and when it does, APT
+refuses the PPA and any package pulled from it fails to install during the build.
 
 **How to refresh `config/archives/mozillateam.key.chroot`:**
 
@@ -398,40 +409,35 @@ any package pulled from it fails to install during the build.
 > Same caveat as M.1: this lives under `config/archives/`. This documents the
 > refresh procedure; the file swap itself is a change to that directory.
 
-### M.3 Re-pin review when Parrot moves its suite from `lory` to `echo`
+### M.3 Re-check the Kali pin as Kali (rolling) drifts ahead of the fixed base
 
 **Why this matters:** APT pinning (the mandatory rule in SPEC section 4) pins the
-Parrot repo LOW and the Ubuntu LTS base HIGH so only explicitly requested
-security tools come from Parrot and core libraries (`glibc`/`libc6`/`python3`)
-always come from the fixed LTS base. That pinning is written against a specific
-Parrot **suite name**. Parrot's current stable suite is **`lory`** (Parrot 6,
-based on Debian 12 "bookworm"). Parrot's next stable is **`echo`** (Parrot 7,
-based on Debian 13 "trixie").
+Kali fallback repo LOW and the Ubuntu LTS base HIGH so only explicitly requested
+fallback tools come from Kali and core libraries (`glibc`/`libc6`/`python3`)
+always come from the fixed LTS base. Kali is a **rolling** release: `kali-rolling`
+tracks Debian testing, so its glibc and core libraries keep moving forward while
+Ubuntu 24.04 LTS ("noble") stays put. The wider that glibc gap grows between
+rolling Kali and the fixed Ubuntu base, the more likely a Kali fallback tool pulls
+a libc dependency the base cannot satisfy, and the more load the pinning has to
+carry to keep the base's core libraries winning. In short: **the glibc skew widens
+over time on its own because Kali rolls,** so the pin needs periodic review, not a
+set-and-forget.
 
-The risk on that move: Debian trixie ships a **newer glibc** than bookworm, and
-newer still than what Ubuntu 24.04 LTS ("noble") carries. The wider the glibc gap
-between the Parrot suite and the fixed Ubuntu base, the more likely a Parrot tool
-pulls a libc dependency the base cannot satisfy, and the more load the pinning
-has to carry to keep the base's core libraries winning. In short: **glibc skew
-widens when the suite moves `lory` -> `echo`,** so the pinning needs a fresh
-review, not a blind suite-name bump.
+**What to do (periodically, and whenever a Kali fallback tool starts pulling
+unexpected base-library upgrades):**
 
-**What to do when Parrot promotes `echo` to stable:**
-
-1. Do **not** just rename `lory` to `echo` in `config/archives/parrot.list.*`.
-   Treat it as a re-pin review.
-2. In `config/archives/parrot.pref.*`, re-confirm the base (noble) still holds
-   Pin-Priority 900+ and Parrot stays low (~100), and specifically verify that
+1. In `config/archives/` (the Kali pin file), re-confirm the base (noble) still
+   holds Pin-Priority 900+ and Kali stays low (~100), and specifically verify that
    `glibc`/`libc6`/`libc-bin`/`python3` and other core libs still resolve to the
-   Ubuntu base, never to `echo`. Consider an explicit high-priority pin that
-   nails the core libc packages to the Ubuntu origin as an extra guard.
-3. Do a test build on the Proxmox VM and inspect the chroot: check `apt-cache
-   policy libc6 python3` shows the Ubuntu origin winning, and that
-   `parrot-tools-full` still resolves against the pinned base without dragging in
-   a trixie-era libc.
-4. Only after that review passes do you update the suite name and record the move
-   (and the reviewed pin priorities) here.
+   Ubuntu base, never to `kali-rolling`. Consider an explicit high-priority pin
+   that nails the core libc packages to the Ubuntu origin as an extra guard.
+2. Do a test build and inspect the chroot: check `apt-cache policy libc6 python3`
+   shows the Ubuntu origin winning, and that each named Kali fallback tool still
+   resolves against the pinned base without dragging in a rolling-era libc.
+3. If a fallback tool can no longer be satisfied without a base-library bump,
+   prefer dropping or replacing that single tool over relaxing the pin. Record the
+   decision here.
 
-> Note: `config/archives/parrot.list` + `parrot.pref` hold the suite name and pin
-> priorities. This is the review checklist to run when Parrot 7 / `echo` lands;
-> the pin edits are changes to those files.
+> Note: the Kali repo list + pin file live in `config/archives/`. This is the
+> review checklist to run periodically as Kali rolls; the pin edits are changes to
+> those files.

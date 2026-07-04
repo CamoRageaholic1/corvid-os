@@ -10,6 +10,8 @@
 # Nothing else in the repo should hardcode the product name. The two extra,
 # non-standard keys below (CORVID_NAME / CORVID_ID) are the build variables
 # other scripts source; standard os-release consumers ignore unknown keys.
+#
+# Tagline: a security-minded, coding-first, AI-agent-ready daily driver.
 # -----------------------------------------------------------------------------
 
 NAME="Corvid OS"
@@ -19,10 +21,10 @@ ID_LIKE="ubuntu debian"
 VERSION="24.04 (Corvid)"
 VERSION_ID="24.04"
 VERSION_CODENAME=corvid
-HOME_URL="https://github.com/CamoRageaholic1/corvid"
-SUPPORT_URL="https://github.com/CamoRageaholic1/corvid/issues"
-BUG_REPORT_URL="https://github.com/CamoRageaholic1/corvid/issues"
-DOCUMENTATION_URL="https://github.com/CamoRageaholic1/corvid/blob/main/README.md"
+HOME_URL="https://github.com/CamoRageaholic1/corvid-os"
+SUPPORT_URL="https://github.com/CamoRageaholic1/corvid-os/issues"
+BUG_REPORT_URL="https://github.com/CamoRageaholic1/corvid-os/issues"
+DOCUMENTATION_URL="https://github.com/CamoRageaholic1/corvid-os/blob/main/README.md"
 LOGO=corvid
 
 # BUILD_ID is stamped at ISO build time. The literal token below is replaced by
