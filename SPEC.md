@@ -22,7 +22,7 @@ from Parrot's repo, pinned against the fixed LTS base to avoid version skew.
 | Layer | Decision | Notes |
 |---|---|---|
 | Base | Kubuntu 24.04 LTS (`noble`), amd64 primary | Start from Kubuntu, not stock Ubuntu, so Plasma is already correct |
-| Build system | Debian `live-build` (`lb`), `--mode ubuntu --distribution noble` | Everything in this repo; ISO built on the Proxmox VM |
+| Build system | Debian `live-build` (`lb`), `--mode ubuntu --distribution noble` | Everything in this repo; ISO built on any Ubuntu 24.04 Linux host (live-build 3.0 -> grub-efi + UEFI remaster) |
 | Desktop | KDE Plasma | |
 | Tools | **Parrot repo, APT-pinned**, **full metapackage** (`parrot-tools-full` or equiv) | Big ISO (~8-9GB) is expected and accepted |
 | Security DNA (v1) | AnonSurf/Tor · LUKS-default installer · hardened kernel sysctl + AppArmor enforce · encrypted live persistence | |
@@ -81,10 +81,10 @@ corvid/
    default (Pin-Priority 900+) and the Parrot repo LOW (e.g. 100) so only explicitly requested
    security packages pull from Parrot. Never let Parrot override glibc/libc6/python3/core libs.
    This is the single detail that keeps the LTS base from breaking. Include the Parrot GPG key.
-2. **This repo holds configuration only; `lb build` runs on the VM.** No build runs on a
-   non-Linux host. Provisioning and the build itself happen on the Proxmox VM. Scripts are
-   authored to run there and validated with `bash -n` and shellcheck where available, not by
-   executing the build locally.
+2. **This repo holds configuration only; `lb build` runs on a Linux host.** No build runs on
+   a non-Linux host. The build runs on any Ubuntu 24.04 Linux host; a homelab helper,
+   `provisioning/proxmox-build-vm.sh`, is optional. Scripts are validated with `bash -n` and
+   shellcheck where available, not by executing the build locally.
 3. **CZD-Tools is not vendored.** The hook clones from GitHub (`CamoRageaholic1`) or copies from
    `~/CZD-Tools` at build time into `/opt/czd-tools` and drops a launcher on PATH. Do not commit
    a copy of the whole suite into this repo.
@@ -98,14 +98,20 @@ corvid/
    CZD-Tools, `0600-0699` branding) fix the load order: hardening and tooling land before
    branding, and the gaps leave room to insert steps later without renumbering.
 
-## 5. Build/run flow (target, runs on Proxmox VM)
+## 5. Build/run flow (runs on any Ubuntu 24.04 Linux host)
+
+Builds on any Ubuntu 24.04 host (VM, container, cloud, or bare metal) with
+live-build. `provisioning/proxmox-build-vm.sh` is an optional homelab helper.
 
 ```
-provisioning/proxmox-build-vm.sh     # create Ubuntu 24.04 VM, install live-build + deps
 lb config     (from auto/config)     # materialize the build tree
-lb build                             # produce corvid-amd64.iso  (~8-9GB, long)
-qemu-system-x86_64 -cdrom corvid-amd64.iso -m 4096   # smoke test
+lb build      (from auto/build)      # build + remaster -> bootable corvid-amd64.iso (UEFI)
+qemu-system-x86_64 -machine q35 -bios /usr/share/ovmf/OVMF.fd -cdrom corvid-amd64.iso -m 4096
 ```
+
+Ubuntu ships live-build 3.0, which needs `--bootloader grub-efi` (its syslinux path is
+broken on noble) and emits an ISO with no boot record; `provisioning/remaster-uefi.sh`
+(called by auto/build) adds the UEFI boot record. Result is UEFI-only. See docs/BUILD.md.
 
 ## 6. Definition of done (v1)
 

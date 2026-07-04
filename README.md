@@ -94,25 +94,34 @@ Corvid is assembled by Debian `live-build`. The pipeline is:
 The build runs on a dedicated Ubuntu 24.04 VM, never on a developer laptop, so results
 are clean and repeatable. Full detail is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+## Download
+
+Published images and checksums:
+
+- **GitHub Releases:** [github.com/CamoRageaholic1/corvid-os/releases](https://github.com/CamoRageaholic1/corvid-os/releases)
+- **Mirror (Google Drive):** _link added when an image is published_
+
+Corvid images are **UEFI-bootable**: copy the `.iso` onto a Ventoy stick (no
+flashing needed) or write it to a USB drive, and boot the target in UEFI mode.
+Verify the download with `shasum -a 256 corvid-amd64.iso`.
+
 ## Build quickstart
 
-The short version (full step-by-step, including the QEMU smoke test and
-troubleshooting, is in [`docs/BUILD.md`](docs/BUILD.md)):
+Build on **any Ubuntu 24.04 Linux host** (VM, container, cloud instance, or bare
+metal) with `live-build` installed. This repo is config only - nothing builds on a
+non-Linux workstation. Full step-by-step (deps, UEFI QEMU test, troubleshooting) is
+in [`docs/BUILD.md`](docs/BUILD.md).
 
 ```sh
-# 1. Provision the build VM (Ubuntu 24.04 + live-build + deps)
-provisioning/proxmox-build-vm.sh
-
-# 2. On the build VM, from the repo root:
-lb config      # materialize the build tree from auto/config
-sudo lb build  # produce corvid-amd64.iso  (long; ~8-9 GB output)
-
-# 3. Smoke-test the image
-qemu-system-x86_64 -cdrom corvid-amd64.iso -m 4096
+# From the repo root on the Linux build host:
+sudo lb config    # materialize the build tree from auto/config
+sudo lb build     # build + auto-remaster -> bootable corvid-amd64.iso
 ```
 
-This repository contains configuration and build scripts only. Nothing here runs
-`lb build` on your workstation; the ISO is produced on the Linux build VM.
+`lb build` (via `auto/build`) stages branding, builds with live-build, and
+remasters the result into a UEFI-bootable `corvid-amd64.iso`. Homelab users can
+optionally stand up a builder with `provisioning/proxmox-build-vm.sh`, but it is
+just one convenience, not a requirement.
 
 ## Roadmap
 

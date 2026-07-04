@@ -1,25 +1,24 @@
 #!/bin/sh
 # Corvid OS -- auto/build
 # ===========================================================================
-# live-build wrapper. Runs ON THE BUILD VM only (never on macOS).
+# live-build wrapper. Runs on the Linux build host only (never on macOS).
 #
 # Flow:
 #   (a) Stage branding assets  -- branding/generate-assets.sh rasterizes the
 #       SVGs and stages PNGs/os-release/theme text into config/includes.chroot
 #       + config/includes.binary. This MUST happen before `lb build`, and a
 #       failure here MUST abort the build (otherwise the ISO ships unbranded).
-#   (b) `lb build noauto "$@"` -- the real, long (~8-9GB, multi-hour) build.
-#       "noauto" stops lb from re-sourcing this script recursively. Output is
-#       tee'd to build.log for post-mortem.
-#   (c) Stable image name -- live-build emits corvid-amd64.hybrid.iso; publish
-#       it also as corvid-amd64.iso (the name SPEC section 5 / smoke-test docs
-#       reference) via a symlink, without duplicating the multi-GB file.
+#   (b) `lb build noauto "$@"` -- the real, long build. Output is tee'd to
+#       build.log. NOTE: on Ubuntu's live-build 3.0 the grub-efi build finishes
+#       the data ISO but then exits NON-ZERO on an obsolete `isohybrid` step
+#       (which only matters for legacy BIOS). We treat that as non-fatal as long
+#       as the data ISO was produced.
+#   (c) Remaster into a bootable UEFI image -- live-build 3.0 emits an ISO with
+#       no El Torito boot record, so provisioning/remaster-uefi.sh adds a GRUB
+#       EFI boot record and writes the final corvid-amd64.iso.
 # ===========================================================================
 set -e
 
-# Locate the repo root from this script's path so the branding step works
-# regardless of the caller's working directory. (lb invokes auto/build with the
-# config tree root as CWD, which is this same directory.)
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 
@@ -28,10 +27,8 @@ echo "==> [auto/build] staging branding assets before lb build"
 bash "$REPO_ROOT/branding/generate-assets.sh"
 
 # ---- (b) the build. Capture lb's REAL exit status through the tee pipe. -----
-# /bin/sh on the Ubuntu build VM is dash, which has no `set -o pipefail`, so a
-# pipeline's status is tee's (always 0). Record lb build's own status via a
-# temp file. `set +e` around the pipeline guarantees the status line runs even
-# when lb build fails (otherwise `set -e` would kill the subshell first).
+# /bin/sh on the Ubuntu build host is dash (no `pipefail`), so capture lb's own
+# status via a temp file rather than trusting the pipeline's (tee's) status.
 _status_file=$(mktemp)
 set +e
 { lb build noauto "$@"; echo "$?" > "$_status_file"; } 2>&1 | tee build.log
@@ -39,29 +36,24 @@ set -e
 _status=$(cat "$_status_file" 2>/dev/null || echo 1)
 rm -f "$_status_file"
 
+# ---- (c) locate the produced data ISO --------------------------------------
+# live-build 3.0 may exit non-zero on the obsolete isohybrid step but still
+# leave the data ISO behind (as live-image-*.hybrid.iso, or the intermediate
+# chroot/binary.hybrid.iso). Find whichever exists.
+_data=""
+for _c in live-image-amd64.hybrid.iso corvid-amd64.hybrid.iso binary.hybrid.iso chroot/binary.hybrid.iso; do
+	if [ -f "$_c" ]; then _data="$_c"; break; fi
+done
+
+if [ -z "$_data" ]; then
+	echo "==> [auto/build] lb build failed (exit $_status) and produced no ISO; see build.log" >&2
+	exit "${_status:-1}"
+fi
 if [ "$_status" -ne 0 ]; then
-	echo "==> [auto/build] lb build failed (exit $_status); see build.log" >&2
-	exit "$_status"
+	echo "==> [auto/build] lb build exited $_status (expected: live-build 3.0's obsolete isohybrid step); data ISO present at $_data, continuing" >&2
 fi
 
-# ---- (c) stable image name: corvid-amd64.iso -> corvid-amd64.hybrid.iso -----
-# lb runs with the config tree root as CWD, so the image lands here next to
-# build.log. Symlink (don't copy) to avoid duplicating an ~8-9GB file.
-_hybrid="corvid-amd64.hybrid.iso"
-_stable="corvid-amd64.iso"
-if [ -f "$_hybrid" ]; then
-	ln -sf "$_hybrid" "$_stable"
-	echo "==> [auto/build] published $_stable -> $_hybrid"
-elif [ -f "$_stable" ]; then
-	echo "==> [auto/build] $_stable already present (no hybrid variant to link)"
-else
-	# Naming can drift across live-build versions; don't fail a good build,
-	# but make the mismatch loud so the builder can fix the link.
-	_found=$(ls -1 corvid-*.iso 2>/dev/null | head -n 1 || true)
-	if [ -n "$_found" ]; then
-		ln -sf "$_found" "$_stable"
-		echo "==> [auto/build] published $_stable -> $_found (fallback match)"
-	else
-		echo "==> [auto/build] WARNING: build succeeded but no corvid-*.iso found to link as $_stable" >&2
-	fi
-fi
+# ---- (d) remaster into a UEFI-bootable Corvid ISO ---------------------------
+echo "==> [auto/build] remastering $_data -> corvid-amd64.iso (UEFI boot record)"
+sh "$REPO_ROOT/provisioning/remaster-uefi.sh" "$_data" "corvid-amd64.iso"
+echo "==> [auto/build] done: corvid-amd64.iso"
