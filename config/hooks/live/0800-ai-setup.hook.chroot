@@ -1,0 +1,39 @@
+#!/bin/sh
+# ============================================================================
+# 0800-ai-setup.hook.chroot  —  make the AI-agent installer runnable
+# ----------------------------------------------------------------------------
+# live-build CHROOT hook. Runs INSIDE the chroot on the build VM (never on this
+# macOS host — SPEC §4 rule 2). Numbered 0800 to run after the existing
+# 0100-0700 hooks with no clash.
+#
+# The corvid-ai-setup TUI and its .desktop entry ship as static files via
+# config/includes.chroot. includes.chroot does not guarantee the executable
+# bit survives packing, so this hook's ONLY job is to fix the modes:
+#   - /usr/local/bin/corvid-ai-setup            -> 0755 (must be executable)
+#   - /usr/share/applications/corvid-ai-setup.desktop -> 0644
+#
+# It installs NOTHING and touches the network for NOTHING: the AI agents are
+# installed at RUNTIME by the user, not at build time.
+# ============================================================================
+set -e
+
+LAUNCHER="/usr/local/bin/corvid-ai-setup"
+DESKTOP="/usr/share/applications/corvid-ai-setup.desktop"
+
+echo "[0800-ai-setup] Fixing modes for the AI-agent installer ..."
+
+if [ -f "${LAUNCHER}" ]; then
+    chmod 0755 "${LAUNCHER}"
+    echo "[0800-ai-setup] chmod 0755 ${LAUNCHER}"
+else
+    echo "[0800-ai-setup][WARN] ${LAUNCHER} missing; check includes.chroot." >&2
+fi
+
+if [ -f "${DESKTOP}" ]; then
+    chmod 0644 "${DESKTOP}"
+    echo "[0800-ai-setup] chmod 0644 ${DESKTOP}"
+else
+    echo "[0800-ai-setup][WARN] ${DESKTOP} missing; check includes.chroot." >&2
+fi
+
+echo "[0800-ai-setup] Done."

@@ -4,18 +4,16 @@
 # live-build wrapper. Runs on the Linux build host only (never on macOS).
 #
 # Flow:
-#   (a) Stage branding assets  -- branding/generate-assets.sh rasterizes the
-#       SVGs and stages PNGs/os-release/theme text into config/includes.chroot
-#       + config/includes.binary. This MUST happen before `lb build`, and a
-#       failure here MUST abort the build (otherwise the ISO ships unbranded).
-#   (b) `lb build noauto "$@"` -- the real, long build. Output is tee'd to
-#       build.log. NOTE: on Ubuntu's live-build 3.0 the grub-efi build finishes
-#       the data ISO but then exits NON-ZERO on an obsolete `isohybrid` step
-#       (which only matters for legacy BIOS). We treat that as non-fatal as long
-#       as the data ISO was produced.
-#   (c) Remaster into a bootable UEFI image -- live-build 3.0 emits an ISO with
-#       no El Torito boot record, so provisioning/remaster-uefi.sh adds a GRUB
-#       EFI boot record and writes the final corvid-amd64.iso.
+#   (a) Stage branding assets (branding/generate-assets.sh). Must succeed.
+#   (b) Neutralize live-build 3.0's broken ISO step. Its genisoimage caps files
+#       at 4 GiB (our squashfs is larger), it writes no El Torito boot record,
+#       and it calls a missing isohybrid. We skip it (an early `exit 0` marked
+#       CORVID-SKIP) so the `binary/` staging tree survives intact.
+#   (c) Run `lb build`. Bootstraps, installs, runs hooks, builds the squashfs
+#       into binary/, and (thanks to (b)) stops short of the broken ISO step.
+#   (d) Master the real UEFI-bootable ISO from binary/ with
+#       provisioning/remaster-uefi.sh, which uses `xorriso -iso-level 3` for
+#       native >4 GiB support plus a proper UEFI El Torito boot record.
 # ===========================================================================
 set -e
 
@@ -26,34 +24,33 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 echo "==> [auto/build] staging branding assets before lb build"
 bash "$REPO_ROOT/branding/generate-assets.sh"
 
-# ---- (b) the build. Capture lb's REAL exit status through the tee pipe. -----
-# /bin/sh on the Ubuntu build host is dash (no `pipefail`), so capture lb's own
-# status via a temp file rather than trusting the pipeline's (tee's) status.
+# ---- (b) neutralize live-build's broken ISO step (keeps binary/ intact) -----
+LB_ISO=/usr/lib/live/build/lb_binary_iso
+if [ -w "$LB_ISO" ] && ! grep -q 'CORVID-SKIP' "$LB_ISO"; then
+	_tmp=$(mktemp)
+	{ head -n 1 "$LB_ISO"; echo 'exit 0  # CORVID-SKIP: ISO mastered by remaster-uefi.sh from binary/'; tail -n +2 "$LB_ISO"; } > "$_tmp"
+	cat "$_tmp" > "$LB_ISO"
+	rm -f "$_tmp"
+	echo "==> [auto/build] neutralized live-build binary_iso (CORVID-SKIP)"
+fi
+
+# ---- (c) the build. Capture lb's real exit status through the tee pipe. ------
 _status_file=$(mktemp)
 set +e
 { lb build noauto "$@"; echo "$?" > "$_status_file"; } 2>&1 | tee build.log
 set -e
 _status=$(cat "$_status_file" 2>/dev/null || echo 1)
 rm -f "$_status_file"
-
-# ---- (c) locate the produced data ISO --------------------------------------
-# live-build 3.0 may exit non-zero on the obsolete isohybrid step but still
-# leave the data ISO behind (as live-image-*.hybrid.iso, or the intermediate
-# chroot/binary.hybrid.iso). Find whichever exists.
-_data=""
-for _c in live-image-amd64.hybrid.iso corvid-amd64.hybrid.iso binary.hybrid.iso chroot/binary.hybrid.iso; do
-	if [ -f "$_c" ]; then _data="$_c"; break; fi
-done
-
-if [ -z "$_data" ]; then
-	echo "==> [auto/build] lb build failed (exit $_status) and produced no ISO; see build.log" >&2
-	exit "${_status:-1}"
-fi
 if [ "$_status" -ne 0 ]; then
-	echo "==> [auto/build] lb build exited $_status (expected: live-build 3.0's obsolete isohybrid step); data ISO present at $_data, continuing" >&2
+	echo "==> [auto/build] lb build failed (exit $_status); see build.log" >&2
+	exit "$_status"
 fi
 
-# ---- (d) remaster into a UEFI-bootable Corvid ISO ---------------------------
-echo "==> [auto/build] remastering $_data -> corvid-amd64.iso (UEFI boot record)"
-sh "$REPO_ROOT/provisioning/remaster-uefi.sh" "$_data" "corvid-amd64.iso"
+# ---- (d) master the UEFI-bootable ISO from the binary/ tree ------------------
+if [ ! -e binary/casper/filesystem.squashfs ] && [ ! -e binary/live/filesystem.squashfs ]; then
+	echo "==> [auto/build] binary/ squashfs missing after lb build; cannot master ISO" >&2
+	exit 1
+fi
+echo "==> [auto/build] mastering corvid-amd64.iso from binary/ (xorriso -iso-level 3)"
+sh "$REPO_ROOT/provisioning/remaster-uefi.sh" binary corvid-amd64.iso
 echo "==> [auto/build] done: corvid-amd64.iso"

@@ -1,0 +1,42 @@
+#!/bin/sh
+# Corvid OS -- 0900-kali-runtime-repo.hook.chroot
+# ===========================================================================
+# Configures Kali as a DORMANT runtime fallback repo on the built system, for
+# pulling the few security tools Ubuntu does not package (metasploit-framework,
+# seclists, wordlists, exploitdb, and similar).
+#
+# Why a late hook instead of config/archives: an active Kali repo during the
+# build contaminates the Ubuntu-based package resolve (Kali can win or supply
+# dependency versions Ubuntu lacks). So Kali is NOT in config/archives, and this
+# hook runs LAST (0900) so no build-time apt operation ever sees it. Nothing is
+# installed or apt-updated here.
+#
+# At runtime the user enables a Kali-only tool with:
+#   sudo apt update
+#   sudo apt install -t kali-rolling <tool>
+# The pin keeps Kali dormant: Ubuntu wins for anything both provide; Kali is
+# used only when a tool is explicitly requested from it.
+#
+# The binary Kali archive key is shipped at
+# /etc/apt/keyrings/kali-archive-keyring.gpg via config/includes.chroot.
+# ===========================================================================
+set -e
+
+install -d -m 0755 /etc/apt/keyrings /etc/apt/sources.list.d /etc/apt/preferences.d
+
+cat > /etc/apt/sources.list.d/kali.list <<'EOF'
+# Kali runtime fallback repo (dormant by default; see preferences.d/kali.pref).
+# Enable a Kali-only tool at runtime:
+#   sudo apt update && sudo apt install -t kali-rolling <tool>
+deb [signed-by=/etc/apt/keyrings/kali-archive-keyring.gpg] http://kali.download/kali kali-rolling main contrib non-free non-free-firmware
+EOF
+
+cat > /etc/apt/preferences.d/kali.pref <<'EOF'
+# Keep Kali dormant: Ubuntu wins for anything both provide; Kali packages are
+# pulled only when explicitly requested (apt install -t kali-rolling <tool>).
+Package: *
+Pin: release o=Kali
+Pin-Priority: 1
+EOF
+
+echo "P: [0900-kali-runtime] Kali runtime fallback repo configured (dormant)."

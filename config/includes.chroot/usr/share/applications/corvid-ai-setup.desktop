@@ -1,0 +1,19 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Corvid AI Setup
+GenericName=AI Agent Installer
+Comment=Install AI agents, IDEs & LLM runtimes (Claude, Codex, Cursor, Windsurf, Ollama, MCP servers, Corvid Skills...)
+Exec=corvid-ai-setup
+TryExec=corvid-ai-setup
+Icon=corvid
+Terminal=true
+StartupNotify=false
+Categories=Development;Utility;
+Keywords=ai;agent;claude;codex;gemini;aider;ollama;lmstudio;hermes;llm;install;cursor;windsurf;openhands;goose;opencode;copilot;mods;sgpt;jan;openwebui;fabric;mcp;skills;ide;
+# ---------------------------------------------------------------------------
+# Terminal=true is REQUIRED: corvid-ai-setup is an interactive TUI (it reads
+# menu choices from stdin), so Plasma must launch it inside a terminal window.
+# Exec/TryExec point at the launcher installed on PATH at
+# /usr/local/bin/corvid-ai-setup (made executable by hook 0800-ai-setup).
+# ---------------------------------------------------------------------------

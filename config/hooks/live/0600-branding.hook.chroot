@@ -47,29 +47,73 @@ else
     echo "W: [0600-branding] plymouth theme not staged (run generate-assets.sh)"
 fi
 
-# ---- Wallpaper: Plasma system default ---------------------------------------
-WALLPKG="Corvid"
-WALLIMG="/usr/share/wallpapers/Corvid/contents/images/1920x1080.png"
-if [ -f "$WALLIMG" ]; then
-    # Set the default wallpaper in each installed Global Theme (look-and-feel).
-    # Prefer kwriteconfig (creates the [Wallpaper] section correctly); fall back
-    # to appending the section when kwriteconfig is unavailable.
-    KW=""
-    for c in kwriteconfig6 kwriteconfig5; do
-        if command -v "$c" >/dev/null 2>&1; then KW="$c"; break; fi
+# ---- Wallpaper: bulletproof Plasma default ----------------------------------
+# Plasma renders whatever the ACTIVE Global Theme's wallpaper package contains.
+# Kubuntu's active theme (org.kubuntu.desktop) uses "KubuntuLight", so setting a
+# [Wallpaper]Image key is not enough and is easily lost to Plasma's config
+# regeneration on first login. The reliable approach is to overwrite the actual
+# image files of the candidate default themes with the Corvid scene, so the
+# desktop shows Corvid regardless of which theme/resolution Plasma picks. This
+# runs unconditionally (guarded only by "the Corvid scene exists") so an earlier
+# step can never skip it.
+CORVIDWALL=""
+for _c in /usr/share/wallpapers/Corvid/contents/images/2560x1440.png \
+          /usr/share/wallpapers/Corvid/contents/images/1920x1080.png; do
+    [ -f "$_c" ] && { CORVIDWALL="$_c"; break; }
+done
+if [ -n "$CORVIDWALL" ]; then
+    # (a) THE GUARANTEE: overwrite every image of the candidate default themes.
+    for _theme in KubuntuLight KubuntuDark Next; do
+        _d="/usr/share/wallpapers/$_theme/contents"
+        [ -d "$_d/images" ] || continue
+        for _img in "$_d"/images/*.png "$_d"/images/*.jpg; do
+            [ -f "$_img" ] && cp -f "$CORVIDWALL" "$_img" 2>/dev/null || true
+        done
+        [ -f "$_d/screenshot.png" ] && cp -f "$CORVIDWALL" "$_d/screenshot.png" 2>/dev/null || true
     done
-    for lnf in /usr/share/plasma/look-and-feel/org.kde.breeze.desktop/contents/defaults \
-               /usr/share/plasma/look-and-feel/org.kde.breezedark.desktop/contents/defaults; do
-        [ -f "$lnf" ] || continue
+
+    # (b) give the Corvid package a valid Plasma-6 metadata.json so a plain
+    #     Image=Corvid also resolves (the staged package ships metadata.desktop).
+    if [ -d /usr/share/wallpapers/Corvid ] && [ ! -f /usr/share/wallpapers/Corvid/metadata.json ]; then
+        cat > /usr/share/wallpapers/Corvid/metadata.json <<'JSON'
+{
+    "KPlugin": {
+        "Id": "Corvid",
+        "Name": "Corvid",
+        "License": "CC-BY-SA-4.0"
+    }
+}
+JSON
+    fi
+
+    # (c) point the installed Global Themes at Corvid (belt-and-suspenders).
+    KW=""
+    for _k in kwriteconfig6 kwriteconfig5; do command -v "$_k" >/dev/null 2>&1 && { KW="$_k"; break; }; done
+    for _lnf in /usr/share/plasma/look-and-feel/org.kubuntu.desktop/contents/defaults \
+                /usr/share/plasma/look-and-feel/org.kde.breeze.desktop/contents/defaults \
+                /usr/share/plasma/look-and-feel/org.kde.breezedark.desktop/contents/defaults; do
+        [ -f "$_lnf" ] || continue
         if [ -n "$KW" ]; then
-            "$KW" --file "$lnf" --group Wallpaper --key Image "$WALLPKG" || true
-        elif ! grep -q '^\[Wallpaper\]' "$lnf" 2>/dev/null; then
-            printf '\n[Wallpaper]\nImage=%s\n' "$WALLPKG" >> "$lnf"
+            "$KW" --file "$_lnf" --group Wallpaper --key Image Corvid || true
+        elif ! grep -q '^\[Wallpaper\]' "$_lnf" 2>/dev/null; then
+            printf '\n[Wallpaper]\nImage=Corvid\n' >> "$_lnf"
         fi
     done
+
+    # (d) seed every new user's Plasma profile.
+    mkdir -p /etc/skel/.config
+    cat > /etc/skel/.config/plasma-org.kde.plasma.desktop-appletsrc <<'SKELEOF'
+[Containments][1]
+wallpaperplugin=org.kde.image
+
+[Containments][1][Wallpaper][org.kde.image][General]
+Image=Corvid
+SKELEOF
+    echo "P: [0600-branding] wallpaper applied (overwrote active-theme images with Corvid scene)"
 else
-    echo "W: [0600-branding] wallpaper not staged (run generate-assets.sh)"
+    echo "W: [0600-branding] Corvid wallpaper image not staged (run generate-assets.sh)"
 fi
+WALLIMG="$CORVIDWALL"
 
 # ---- Wallpaper: SDDM login background ---------------------------------------
 if [ -f "$WALLIMG" ] && [ -d /usr/share/sddm/themes/breeze ]; then

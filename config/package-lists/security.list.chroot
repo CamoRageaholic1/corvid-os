@@ -1,59 +1,215 @@
 # ============================================================================
-# security.list.chroot  —  Corvid OS full Parrot security TOOL catalog
+# security.list.chroot  --  Corvid OS curated security / pentest tool catalog
 # ----------------------------------------------------------------------------
-# live-build package list (one package per line; '#' = comment).
+# live-build package list. RULES for this file (do not break them):
+#   * ONE package per line.
+#   * '#' comments must be on their OWN line -- live-build 3.0 does NOT strip
+#     inline comments, so a trailing "pkg  # note" is passed to apt verbatim
+#     and BREAKS the build. Every comment here is a full line starting with #.
 #
-# These packages come from the PARROT repo, NOT Ubuntu. They only resolve
-# because Parrot is layered in via `config/archives/parrot.list.chroot` and
-# APT-pins it (Parrot LOW, e.g. Pin-Priority 100; Ubuntu/noble HIGH 900+), so
-# only the packages explicitly named here pull from Parrot while glibc/python3/
-# core libs stay on the LTS base. See SPEC.md §4 rule 1.
+# CURATION APPROACH (why this list looks the way it does)
+# ----------------------------------------------------------------------------
+# The base is Kubuntu 24.04 LTS (noble). Every package below was VERIFIED to
+# exist in Ubuntu noble main/universe (checked against packages.ubuntu.com on
+# 2026-07-04). They install cleanly on the Ubuntu base with NO library skew --
+# unlike Parrot/Kali's Debian-built binaries, which drag in glibc/python/lib
+# mismatches that break an Ubuntu graft at build time.
 #
-# Expect a BIG install (~several GB) — this is intentional (SPEC §2: "Big ISO
-# ~8-9GB is expected and accepted").
+# This replaces the earlier failed plan of installing Parrot's
+# `parrot-tools-full` metapackage: that package is NOT in Parrot's `lory` repo
+# (which ships only ~6 core packages), and Parrot's tool binaries conflict with
+# the Ubuntu base. So we curate from Ubuntu's OWN universe instead.
 #
-# METAPACKAGE NAME: VERIFIED. `parrot-tools-full` exists in the Parrot repo.
-# Confirmed 2026-07-03 by directory-listing the pool:
-#     https://deb.parrot.sh/parrot/pool/main/p/parrot-tools/
-# which contains parrot-tools-full_*.deb (versions 6.4.2 / 7.1.1 / 7.1.2,
-# archs amd64/arm64/armhf/riscv64). Since we pin the `lory` suite (Parrot 6),
-# the 6.x amd64 build is what resolves. Use it directly, no alias needed.
-#
-# NOTE the earlier "parrot-meta-full" guess does NOT exist; the whole-catalog
-# meta is `parrot-tools-full`. The parrot-meta-* family in that pool is a
-# different thing (parrot-meta-privacy, -crypto, -devel*) and is NOT the tool
-# catalog -- do not substitute it for parrot-tools-full.
+# KALI-ONLY TOOLS ARE NOT BAKED IN HERE.
+# ----------------------------------------------------------------------------
+# Well-known tools that Ubuntu does NOT package (metasploit-framework, seclists,
+# exploitdb/searchsploit, the social-engineer-toolkit, crackmapexec/netexec,
+# responder, wpscan, sslyze, theHarvester, enum4linux, feroxbuster, volatility3,
+# and other Kali-exclusives) are deliberately LEFT OUT of this build. Baking
+# Kali packages into the ISO risks the exact library-skew build breakage we are
+# avoiding. Instead they are offered on-demand by the RUNTIME INSTALLER, which
+# pulls them from the low-priority, pinned Kali fallback repo configured in
+# config/archives/kali.list.chroot + kali.pref.chroot. See the commented
+# "KALI FALLBACK" catalog at the bottom of this file for the known names.
 # ============================================================================
 
-# --- PRIMARY: the full Parrot pentest tool catalog --------------------------
-parrot-tools-full
 
 # ============================================================================
-# FALLBACK (commented) — CATEGORY METAPACKAGES
-# ----------------------------------------------------------------------------
-# If you ever need to slim the image below the full catalog, DELETE the
-# `parrot-tools-full` line above and UNCOMMENT the subset of category metas you
-# want. The names below are the REAL parrot-tools-<category> packages, verified
-# 2026-07-03 in the same pool listing as parrot-tools-full:
-#     https://deb.parrot.sh/parrot/pool/main/p/parrot-tools/
-# (Earlier drafts of this file guessed names like parrot-tools-info /
-#  -database / -reverse / -exploitation / -post / -forensic / -report /
-#  -social / -crypto -- those DO NOT EXIST. Use only the verified names here.)
+# Network discovery & scanning
 # ============================================================================
+nmap
+masscan
+netdiscover
+arp-scan
+fping
+hping3
+netcat-openbsd
+socat
+tcpdump
+p0f
+netsniff-ng
+
+# ============================================================================
+# DNS enumeration & host/OSINT recon
+# ============================================================================
+# dnsutils is the familiar transitional name; bind9-dnsutils is the concrete
+# package that ships dig/nslookup/host in noble. Both are kept for safety.
+dnsutils
+bind9-dnsutils
+whois
+dnsrecon
+dnsenum
+fierce
+dmitry
+
+# ============================================================================
+# Web application testing
+# ============================================================================
+nikto
+sqlmap
+wfuzz
+dirb
+dirsearch
+gobuster
+ffuf
+whatweb
+wapiti
+wafw00f
+cadaver
+
+# ============================================================================
+# Password attacks & hash cracking
+# ============================================================================
+john
+hashcat
+hydra
+medusa
+ncrack
+patator
+hashid
+crunch
+cewl
+ophcrack
+chntpw
+
+# ============================================================================
+# Wireless auditing (802.11 / WPS)
+# ============================================================================
+aircrack-ng
+reaver
+wifite
+pixiewps
+bully
+mdk4
+hcxtools
+hcxdumptool
+macchanger
+hostapd
+
+# ============================================================================
+# Sniffing, spoofing & MITM
+# ============================================================================
+wireshark
+tshark
+ettercap-graphical
+bettercap
+dsniff
+tcpflow
+driftnet
+arpwatch
+yersinia
+
+# ============================================================================
+# SMB / SNMP / network-service enumeration
+# ============================================================================
+smbclient
+smbmap
+snmp
+onesixtyone
+nbtscan
+ldap-utils
+
+# ============================================================================
+# Forensics, steganography & file recovery
+# ============================================================================
+sleuthkit
+autopsy
+foremost
+scalpel
+testdisk
+binwalk
+steghide
+libimage-exiftool-perl
+
+# ============================================================================
+# Reverse engineering & debugging
+# ============================================================================
+radare2
+gdb
+ltrace
+strace
+checksec
+
+# ============================================================================
+# Anonymity, proxying & tunneling
+# ============================================================================
+tor
+torsocks
+proxychains4
+stunnel4
+openvpn
+wireguard-tools
+
+
+# ============================================================================
+# KALI FALLBACK CATALOG  (NOT installed by this list -- reference only)
+# ----------------------------------------------------------------------------
+# The names below are the well-known Kali-exclusive tools that are NOT in
+# Ubuntu noble (each was checked and returned "No such package" on
+# packages.ubuntu.com, 2026-07-04, unless noted as a Go/other upstream-only
+# tool). Do NOT uncomment these here -- Kali binaries baked into the ISO can
+# break the Ubuntu base. Install them at RUNTIME instead, e.g.:
+#     sudo apt update
+#     sudo apt install -t kali-rolling metasploit-framework
+# apt resolves them from the pinned Kali fallback repo (Pin-Priority 100), while
+# every core lib stays on Ubuntu (hard-blocked at -1). See kali.pref.chroot.
 #
-# parrot-tools-infogathering   # information gathering / recon
-# parrot-tools-vuln            # vulnerability analysis
-# parrot-tools-web             # web application analysis
-# parrot-tools-password        # password attacks
-# parrot-tools-wireless        # wireless attacks
-# parrot-tools-reversing       # reverse engineering
-# parrot-tools-pwn             # exploitation / binary pwn
-# parrot-tools-sniff           # sniffing & spoofing
-# parrot-tools-postexploit     # post-exploitation
-# parrot-tools-forensics       # digital forensics
-# parrot-tools-reporting       # reporting tools
-# parrot-tools-automotive      # automotive / CAN
-# parrot-tools-cloud           # cloud pentest (pacu, etc.)
-# parrot-tools-ai              # AI/ML security tooling
-# parrot-tools-maintain        # access maintenance / persistence
+# Exploitation / frameworks:
+#   metasploit-framework
+#   exploitdb                 # provides searchsploit; not in noble
+#   set                       # social-engineer-toolkit
+#   beef-xss
+#   commix                    # was in older Ubuntu, dropped from noble
+#
+# Credential / AD / SMB attack:
+#   crackmapexec              # a.k.a. netexec on newer Kali
+#   responder
+#   enum4linux                # neither enum4linux nor enum4linux-ng is in noble
+#
+# Web:
+#   wpscan
+#   feroxbuster
+#   skipfish                  # dropped from noble
+#
+# Recon / OSINT (upstream Go/py tools Ubuntu does not package):
+#   theharvester
+#   amass
+#   subfinder
+#   nuclei
+#
+# TLS / crypto analysis:
+#   sslyze
+#
+# Wireless / RF:
+#   kismet                    # dropped from noble
+#
+# Forensics / memory:
+#   volatility3
+#   bulk-extractor            # dropped from noble
+#
+# Wordlists / payloads:
+#   seclists
+#   wordlists                 # Kali metapackage; no Ubuntu equivalent
+#   nishang
+#   powersploit
 # ============================================================================

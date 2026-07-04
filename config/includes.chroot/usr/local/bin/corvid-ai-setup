@@ -1,0 +1,710 @@
+#!/usr/bin/env bash
+# ============================================================================
+# corvid-ai-setup  —  install AI coding agents & local LLM runtimes
+# ----------------------------------------------------------------------------
+# Corvid OS flagship "agentic OS" tool. This is a RUNTIME installer: it runs on
+# the live/installed system when the USER launches it, NOT at image build time.
+# It installs nothing on its own until the user picks something from the menu.
+#
+# The base image already ships nodejs+npm, python3+pipx, curl and git (from the
+# devstack hook 0400), so this script only needs to shell out to those.
+#
+# Design goals:
+#   - Plain numbered TUI that works over a bare terminal (colors degrade to none
+#     when stdout is not a tty or tput is unavailable).
+#   - Never hard-fail the whole menu because one tool's install broke — each
+#     action reports its own success/failure and returns to the menu.
+#   - Show the exact command before running it, so the user learns the real
+#     install method instead of trusting a black box.
+#
+# NOTE: no `set -e` on purpose — a failed install must drop back to the menu,
+# not kill the program.
+# ============================================================================
+
+set -u
+
+# ---------------------------------------------------------------------------
+# Colors — light touch, graceful degradation.
+# ---------------------------------------------------------------------------
+if [ -t 1 ] && command -v tput >/dev/null 2>&1 && [ "$(tput colors 2>/dev/null || echo 0)" -ge 8 ] 2>/dev/null; then
+    BOLD="$(tput bold)"; RESET="$(tput sgr0)"
+    RED="$(tput setaf 1)"; GREEN="$(tput setaf 2)"; YELLOW="$(tput setaf 3)"
+    BLUE="$(tput setaf 4)"; CYAN="$(tput setaf 6)"
+else
+    BOLD=""; RESET=""; RED=""; GREEN=""; YELLOW=""; BLUE=""; CYAN=""
+fi
+
+# ---------------------------------------------------------------------------
+# Little print helpers.
+# ---------------------------------------------------------------------------
+say()    { printf '%s\n' "$*"; }
+info()   { printf '%s\n' "${BLUE}$*${RESET}"; }
+ok()     { printf '%s\n' "${GREEN}[ ok ]${RESET} $*"; }
+warn()   { printf '%s\n' "${YELLOW}[warn]${RESET} $*" >&2; }
+err()    { printf '%s\n' "${RED}[fail]${RESET} $*" >&2; }
+hint()   { printf '%s\n' "${CYAN}  ->${RESET} $*"; }
+header() { printf '\n%s\n' "${BOLD}== $* ==${RESET}"; }
+
+have()   { command -v "$1" >/dev/null 2>&1; }
+
+# need CMD [advice] — returns non-zero and warns if CMD is missing.
+need() {
+    _cmd="$1"; _advice="${2:-}"
+    if have "$_cmd"; then
+        return 0
+    fi
+    err "Required tool '${_cmd}' is not installed."
+    [ -n "$_advice" ] && say "     $_advice"
+    return 1
+}
+
+# run "command string" — print the exact command, then execute it.
+run() {
+    printf '%s %s\n' "${CYAN}Running:${RESET}" "$1"
+    eval "$1"
+}
+
+pause() {
+    printf '\n%s' "Press Enter to return to the menu... "
+    read -r _ || true
+}
+
+# ---------------------------------------------------------------------------
+# npm global install with fallbacks.
+#   1. plain `npm install -g`
+#   2. `sudo npm install -g`  (if sudo exists)
+#   3. user-writable prefix under ~/.local  (its bin is already on Corvid PATH)
+# ---------------------------------------------------------------------------
+npm_global_install() {
+    pkg="$1"
+    if run "npm install -g ${pkg}"; then
+        return 0
+    fi
+    warn "Global npm install failed (usually the npm prefix is not user-writable)."
+
+    if have sudo; then
+        say "Retrying with sudo (you may be prompted for your password)..."
+        if run "sudo npm install -g ${pkg}"; then
+            return 0
+        fi
+        warn "sudo install also failed."
+    fi
+
+    prefix="${HOME}/.local"
+    say "Retrying with a user-writable npm prefix at ${prefix} ..."
+    mkdir -p "${prefix}"
+    if run "npm install -g --prefix ${prefix} ${pkg}"; then
+        ok "Installed into ${prefix} (its bin dir is already on Corvid's PATH)."
+        return 0
+    fi
+
+    err "All npm install strategies failed for ${pkg}."
+    say "  Manual options:"
+    say "    - Fix the global prefix:  npm config set prefix ~/.local  (then re-run)"
+    say "    - Or install with sudo:   sudo npm install -g ${pkg}"
+    return 1
+}
+
+# ---------------------------------------------------------------------------
+# Individual installers. Each returns 0 on success, non-zero on failure.
+# ---------------------------------------------------------------------------
+
+install_claude_code() {
+    header "Claude Code (Anthropic)"
+    need npm "Node.js/npm ships with Corvid — reinstall it with: sudo apt install nodejs npm" || return 1
+    if npm_global_install "@anthropic-ai/claude-code"; then
+        ok "Claude Code installed."
+        hint "Start it with:  claude"
+        return 0
+    fi
+    return 1
+}
+
+install_codex() {
+    header "OpenAI Codex CLI"
+    need npm "Node.js/npm ships with Corvid — reinstall it with: sudo apt install nodejs npm" || return 1
+    if npm_global_install "@openai/codex"; then
+        ok "OpenAI Codex CLI installed."
+        hint "Start it with:  codex"
+        return 0
+    fi
+    return 1
+}
+
+install_gemini() {
+    header "Google Gemini CLI"
+    need npm "Node.js/npm ships with Corvid — reinstall it with: sudo apt install nodejs npm" || return 1
+    if npm_global_install "@google/gemini-cli"; then
+        ok "Google Gemini CLI installed."
+        hint "Start it with:  gemini"
+        return 0
+    fi
+    return 1
+}
+
+install_aider() {
+    header "Aider (AI pair programmer)"
+    if ! need pipx "Install it with:  python3 -m pip install --user pipx && pipx ensurepath"; then
+        return 1
+    fi
+    if run "pipx install aider-chat"; then
+        ok "Aider installed."
+        hint "Start it in a git repo with:  aider"
+        return 0
+    fi
+    err "Aider install failed."
+    return 1
+}
+
+install_ollama() {
+    header "Ollama (local LLM runtime)"
+    need curl "Install it with:  sudo apt install curl" || return 1
+    say "This runs Ollama's official installer. It may ask for sudo to install the"
+    say "systemd service and place the 'ollama' binary under /usr/local/bin."
+    if run "curl -fsSL https://ollama.com/install.sh | sh"; then
+        ok "Ollama installed."
+        hint "Pull & chat with a model:  ollama run llama3"
+        hint "List installed models:     ollama list"
+        return 0
+    fi
+    err "Ollama install failed."
+    return 1
+}
+
+install_lmstudio() {
+    header "LM Studio (local LLM GUI)"
+    need curl "Install it with:  sudo apt install curl" || return 1
+
+    # LM Studio ships the desktop app as a Linux AppImage. Their documented
+    # "latest" redirect resolves to the current x64 AppImage, so we don't have
+    # to hardcode a version. If that download fails (offline, URL changed), we
+    # fall back to guiding the user to the download page.
+    url="https://lmstudio.ai/download/latest/linux/x64?format=AppImage"
+    dest_dir="${HOME}/.local/bin"
+    dest="${dest_dir}/LM-Studio.AppImage"
+
+    mkdir -p "${dest_dir}"
+    say "Downloading the LM Studio AppImage to ${dest}"
+    if run "curl -fL --progress-bar '${url}' -o '${dest}'" && [ -s "${dest}" ]; then
+        chmod +x "${dest}"
+        ok "LM Studio saved to ${dest} and made executable."
+        hint "Start it with:  LM-Studio.AppImage    (~/.local/bin is on your PATH)"
+        say "Notes:"
+        say "  - AppImages need FUSE. If it won't launch, run it once with:"
+        say "        ${dest} --appimage-extract-and-run"
+        say "  - LM Studio also has a headless CLI ('lms'):  curl -fsSL https://lmstudio.ai/install.sh | bash"
+        return 0
+    fi
+
+    err "Automatic download failed."
+    say "Do this manually instead:"
+    say "  1. Open  https://lmstudio.ai/download  in a browser and download the Linux AppImage."
+    say "  2. chmod +x ~/Downloads/LM-Studio-*.AppImage"
+    say "  3. mv     ~/Downloads/LM-Studio-*.AppImage  ${dest}"
+    say "     (~/.local/bin is already on Corvid's PATH, so it becomes 'LM-Studio.AppImage')"
+    rm -f "${dest}" 2>/dev/null || true
+    return 1
+}
+
+install_hermes() {
+    header "Hermes (Nous Research self-improving agent)"
+    need curl "Install it with:  sudo apt install curl" || return 1
+    say "This runs the official Nous Research installer. It clones the hermes-agent"
+    say "repo, builds a Python venv, pulls its deps, and adds a global 'hermes' command."
+    say "Project: https://github.com/NousResearch/hermes-agent"
+    if run "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"; then
+        ok "Hermes installed."
+        hint "First-time auth:  hermes setup --portal"
+        hint "Then run it with: hermes"
+        return 0
+    fi
+    err "Hermes install failed."
+    say "You can install it manually from:  https://github.com/NousResearch/hermes-agent"
+    return 1
+}
+
+install_openhands() {
+    header "OpenHands (autonomous coding agent)"
+    if ! need pipx "Install it with:  python3 -m pip install --user pipx && pipx ensurepath"; then
+        return 1
+    fi
+    if run "pipx install openhands-ai"; then
+        ok "OpenHands installed."
+        hint "Start it with:  openhands"
+        return 0
+    fi
+    err "OpenHands install failed."
+    return 1
+}
+
+install_goose() {
+    header "Goose (Block — local AI agent)"
+    need curl "Install it with:  sudo apt install curl" || return 1
+    say "This runs Block's official Goose installer (downloads the 'goose' binary and"
+    say "sets it up under your home directory)."
+    say "Project: https://github.com/block/goose"
+    if run "curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh | bash"; then
+        ok "Goose installed."
+        hint "Start it with:  goose        (open a new shell first if it isn't on PATH yet)"
+        return 0
+    fi
+    warn "Official installer failed — trying pipx as a fallback."
+    if have pipx && run "pipx install goose-ai"; then
+        ok "Goose installed via pipx (package: goose-ai)."
+        hint "Start it with:  goose"
+        return 0
+    fi
+    err "Goose install failed."
+    say "Install manually from:  https://block.github.io/goose/docs/getting-started/installation"
+    return 1
+}
+
+install_opencode() {
+    header "opencode (terminal AI coding agent)"
+    need curl "Install it with:  sudo apt install curl" || return 1
+    say "This runs the official opencode installer."
+    say "Project: https://opencode.ai"
+    if run "curl -fsSL https://opencode.ai/install | bash"; then
+        ok "opencode installed."
+        hint "Start it with:  opencode     (open a new shell first if it isn't on PATH yet)"
+        return 0
+    fi
+    warn "Official installer failed — trying the npm package as a fallback."
+    if need npm "Install Node.js/npm with:  sudo apt install nodejs npm" && npm_global_install "opencode-ai"; then
+        ok "opencode installed via npm (package: opencode-ai)."
+        hint "Start it with:  opencode"
+        return 0
+    fi
+    err "opencode install failed."
+    return 1
+}
+
+install_copilot_cli() {
+    header "GitHub Copilot CLI (gh extension)"
+    need gh "Install the GitHub CLI first:  sudo apt install gh   (or see https://cli.github.com)" || return 1
+    say "This adds the Copilot extension to the GitHub CLI. You must be logged in"
+    say "('gh auth login') and have Copilot access on your GitHub account."
+    if run "gh extension install github/gh-copilot"; then
+        ok "GitHub Copilot CLI installed."
+        hint "Suggest a command:  gh copilot suggest \"...\""
+        hint "Explain a command:  gh copilot explain \"...\""
+        return 0
+    fi
+    err "GitHub Copilot CLI install failed."
+    return 1
+}
+
+install_cursor() {
+    header "Cursor (AI-first IDE)"
+    need curl "Install it with:  sudo apt install curl" || return 1
+
+    dest_dir="${HOME}/.local/bin"
+    dest="${dest_dir}/Cursor.AppImage"
+    mkdir -p "${dest_dir}"
+
+    # Cursor ships Linux as an AppImage. Their download API returns a JSON blob
+    # with the current stable AppImage URL, so we don't hardcode a version.
+    api="https://www.cursor.com/api/download?platform=linux-x64&releaseTrack=stable"
+    say "Resolving the latest Cursor AppImage URL from cursor.com ..."
+    dl=""
+    if have jq; then
+        dl="$(curl -fsSL "${api}" 2>/dev/null | jq -r '.downloadUrl // .url // empty' 2>/dev/null)"
+    fi
+    if [ -z "${dl}" ]; then
+        # Fallback: pull the first AppImage URL out of the response without jq.
+        dl="$(curl -fsSL "${api}" 2>/dev/null | grep -oE 'https://[^"]+\.AppImage' | head -n1)"
+    fi
+
+    if [ -n "${dl}" ]; then
+        say "Downloading Cursor AppImage to ${dest}"
+        if run "curl -fL --progress-bar '${dl}' -o '${dest}'" && [ -s "${dest}" ]; then
+            chmod +x "${dest}"
+            ok "Cursor saved to ${dest} and made executable."
+            hint "Start it with:  Cursor.AppImage    (~/.local/bin is on your PATH)"
+            say "  - AppImages need FUSE. If it won't launch:  ${dest} --appimage-extract-and-run"
+            return 0
+        fi
+        rm -f "${dest}" 2>/dev/null || true
+    fi
+
+    err "Automatic download failed (the API or URL may have changed)."
+    say "Do this manually instead:"
+    say "  1. Open  https://www.cursor.com/downloads  and download the Linux (x64) AppImage."
+    say "  2. chmod +x ~/Downloads/Cursor-*.AppImage"
+    say "  3. mv     ~/Downloads/Cursor-*.AppImage  ${dest}"
+    say "     (~/.local/bin is already on Corvid's PATH, so it becomes 'Cursor.AppImage')"
+    return 1
+}
+
+install_windsurf() {
+    header "Windsurf (Codeium's AI IDE)"
+    need curl "Install it with:  sudo apt install curl" || return 1
+
+    if have apt-get && have sudo; then
+        say "Installing Windsurf from Codeium's apt repository (Debian/Ubuntu)."
+        say "Docs: https://windsurf.com/editor/download"
+        key="https://windsurf-stable.codeiumdata.com/wVxQEIWkwPUEAGf3/windsurf.gpg"
+        keyring="/usr/share/keyrings/windsurf-stable-archive-keyring.gpg"
+        listline="deb [signed-by=${keyring} arch=amd64] https://windsurf-stable.codeiumdata.com/wVxQEIWkwPUEAGf3/apt stable main"
+        if run "curl -fsSL '${key}' | sudo gpg --dearmor -o '${keyring}'" \
+           && run "echo '${listline}' | sudo tee /etc/apt/sources.list.d/windsurf.list >/dev/null" \
+           && run "sudo apt-get update" \
+           && run "sudo apt-get install -y windsurf"; then
+            ok "Windsurf installed."
+            hint "Start it with:  windsurf"
+            return 0
+        fi
+        warn "apt-repo install failed (their repo path may have changed)."
+    fi
+
+    err "Automatic install failed."
+    say "Install manually instead:"
+    say "  1. Open  https://windsurf.com/editor/download  and grab the Linux build (.deb or tarball)."
+    say "  2. .deb:     sudo apt install ./windsurf-*.deb"
+    say "     tarball:  extract it and run the 'windsurf' launcher inside."
+    return 1
+}
+
+install_vscode_ai_ext() {
+    header "VS Code AI extensions (Cline + Continue)"
+    need code "Install VS Code first to get the 'code' command (e.g. sudo apt install code), then re-run this." || return 1
+    total=0; good=0
+    for ext in "saoudrizwan.claude-dev" "Continue.continue"; do
+        total=$((total + 1))
+        if run "code --install-extension ${ext}"; then
+            good=$((good + 1))
+        fi
+    done
+    printf '\n'
+    if [ "$good" -eq "$total" ]; then
+        ok "Installed both VS Code AI extensions (Cline + Continue)."
+        hint "Open VS Code and look for the Cline and Continue icons in the sidebar."
+        return 0
+    fi
+    warn "Installed ${good}/${total} extensions. Review the messages above."
+    return 1
+}
+
+install_llm() {
+    header "llm (Simon Willison's LLM CLI)"
+    if ! need pipx "Install it with:  python3 -m pip install --user pipx && pipx ensurepath"; then
+        return 1
+    fi
+    if run "pipx install llm"; then
+        ok "llm installed."
+        hint "Start it with:  llm \"your prompt\""
+        say "Next steps:"
+        say "  - Store an API key:         llm keys set openai"
+        say "  - Use local Ollama models:  llm install llm-ollama"
+        return 0
+    fi
+    err "llm install failed."
+    return 1
+}
+
+install_mods() {
+    header "mods (Charmbracelet — AI on the command line)"
+    say "mods pipes shell output through an LLM. Two supported install paths:"
+    say "  a) Charm's apt repo (Debian/Ubuntu .deb)    b) 'go install' (needs Go)"
+
+    # Path A: Charm's apt repo. Needs sudo + apt (Corvid is Debian-based) + gpg.
+    if have apt-get && have sudo && have curl; then
+        say ""
+        say "Trying Charm's apt repository..."
+        if run "sudo mkdir -p /etc/apt/keyrings" \
+           && run "curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg" \
+           && run "echo 'deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *' | sudo tee /etc/apt/sources.list.d/charm.list >/dev/null" \
+           && run "sudo apt-get update" \
+           && run "sudo apt-get install -y mods"; then
+            ok "mods installed via Charm's apt repo."
+            hint "Try it with:  ls | mods \"explain these files\""
+            return 0
+        fi
+        warn "apt-repo install failed — falling back to 'go install'."
+    fi
+
+    # Path B: go install.
+    if need go "Go ships in Corvid's dev stack. Install it with:  sudo apt install golang-go"; then
+        if run "go install github.com/charmbracelet/mods@latest"; then
+            ok "mods installed via 'go install' (into \$(go env GOPATH)/bin — usually ~/go/bin)."
+            hint "Make sure that bin dir is on PATH, then run:  mods \"your prompt\""
+            return 0
+        fi
+    fi
+
+    err "mods install failed."
+    say "Install manually from:  https://github.com/charmbracelet/mods"
+    return 1
+}
+
+install_shell_gpt() {
+    header "shell-gpt (sgpt — ChatGPT for your shell)"
+    if ! need pipx "Install it with:  python3 -m pip install --user pipx && pipx ensurepath"; then
+        return 1
+    fi
+    if run "pipx install shell-gpt"; then
+        ok "shell-gpt installed."
+        hint "Ask a question:  sgpt \"your question\""
+        hint "Generate a shell command:  sgpt --shell \"...\""
+        return 0
+    fi
+    err "shell-gpt install failed."
+    return 1
+}
+
+install_jan() {
+    header "Jan (offline AI assistant)"
+    need curl "Install it with:  sudo apt install curl" || return 1
+
+    dest_dir="${HOME}/.local/bin"
+    dest="${dest_dir}/Jan.AppImage"
+    mkdir -p "${dest_dir}"
+
+    # Jan ships Linux as an AppImage from its GitHub releases. Resolve the latest
+    # AppImage asset URL from the GitHub API (no hardcoded version).
+    api="https://api.github.com/repos/menloresearch/jan/releases/latest"
+    say "Resolving the latest Jan AppImage from GitHub releases ..."
+    dl="$(curl -fsSL "${api}" 2>/dev/null | grep -oE 'https://[^"]+\.AppImage' | head -n1)"
+
+    if [ -n "${dl}" ]; then
+        say "Downloading Jan AppImage to ${dest}"
+        if run "curl -fL --progress-bar '${dl}' -o '${dest}'" && [ -s "${dest}" ]; then
+            chmod +x "${dest}"
+            ok "Jan saved to ${dest} and made executable."
+            hint "Start it with:  Jan.AppImage    (~/.local/bin is on your PATH)"
+            say "  - AppImages need FUSE. If it won't launch:  ${dest} --appimage-extract-and-run"
+            return 0
+        fi
+        rm -f "${dest}" 2>/dev/null || true
+    fi
+
+    err "Automatic download failed (the release layout may have changed)."
+    say "Do this manually instead:"
+    say "  1. Open  https://jan.ai/download  and download the Linux AppImage."
+    say "  2. chmod +x ~/Downloads/jan-*.AppImage"
+    say "  3. mv     ~/Downloads/jan-*.AppImage  ${dest}"
+    return 1
+}
+
+install_open_webui() {
+    header "Open WebUI (self-hosted AI chat dashboard)"
+    if ! need pipx "Install it with:  python3 -m pip install --user pipx && pipx ensurepath"; then
+        return 1
+    fi
+    say "Open WebUI is a browser dashboard for local models. It pairs with Ollama"
+    say "(install option above) and serves on http://localhost:8080."
+    if run "pipx install open-webui"; then
+        ok "Open WebUI installed."
+        hint "Start it with:  open-webui serve      (then open http://localhost:8080)"
+        return 0
+    fi
+    err "Open WebUI install failed."
+    say "Note: Open WebUI needs Python 3.11+. You can also run it in Docker:"
+    say "  docker run -d -p 8080:8080 -v open-webui:/app/backend/data --name open-webui ghcr.io/open-webui/open-webui:main"
+    return 1
+}
+
+install_fabric() {
+    header "fabric (Daniel Miessler — AI patterns/prompts library)"
+    if ! need go "Go ships in Corvid's dev stack. Install it with:  sudo apt install golang-go"; then
+        return 1
+    fi
+    if run "go install github.com/danielmiessler/fabric/cmd/fabric@latest"; then
+        ok "fabric installed (into \$(go env GOPATH)/bin — usually ~/go/bin)."
+        say "Make sure that bin dir is on PATH, then fetch the pattern library and configure:"
+        say "  fabric --setup      (interactive: pick a model + pull the patterns)"
+        say "  fabric -U           (update/download the latest patterns)"
+        hint "Run a pattern with:  pbpaste | fabric -p <pattern>   (e.g. fabric -p summarize)"
+        return 0
+    fi
+    err "fabric install failed."
+    say "Install manually from:  https://github.com/danielmiessler/fabric"
+    return 1
+}
+
+install_mcp_servers() {
+    header "Popular MCP servers (Model Context Protocol)"
+    need npm "Node.js/npm ships with Corvid — reinstall it with: sudo apt install nodejs npm" || return 1
+    say "Installing a vetted set of MCP servers globally via npm. These plug extra"
+    say "tools into MCP-aware agents (Claude Code, etc.)."
+    servers="@modelcontextprotocol/server-filesystem \
+@modelcontextprotocol/server-git \
+@modelcontextprotocol/server-github \
+@modelcontextprotocol/server-memory \
+@modelcontextprotocol/server-sequential-thinking \
+@playwright/mcp"
+    total=0; good=0
+    for pkg in $servers; do
+        total=$((total + 1))
+        if npm_global_install "${pkg}"; then
+            good=$((good + 1))
+        fi
+    done
+    printf '\n'
+    if [ "$good" -eq "$total" ]; then
+        ok "All ${total} MCP servers installed."
+    else
+        warn "Installed ${good}/${total} MCP servers. Review the messages above."
+    fi
+    say ""
+    say "Register them with Claude Code (run once each; tweak paths/args to taste):"
+    say "  claude mcp add filesystem           -- npx -y @modelcontextprotocol/server-filesystem \$HOME"
+    say "  claude mcp add git                  -- npx -y @modelcontextprotocol/server-git"
+    say "  claude mcp add github               -- npx -y @modelcontextprotocol/server-github"
+    say "  claude mcp add memory               -- npx -y @modelcontextprotocol/server-memory"
+    say "  claude mcp add sequential-thinking  -- npx -y @modelcontextprotocol/server-sequential-thinking"
+    say "  claude mcp add playwright           -- npx -y @playwright/mcp"
+    hint "List what's registered:  claude mcp list"
+    say "  (server-github needs a GITHUB_TOKEN in its env to reach private repos.)"
+    return 0
+}
+
+install_corvid_skills() {
+    header "Corvid Skills library"
+    need git "Install it with:  sudo apt install git" || return 1
+    dest="${HOME}/corvid-skills"
+    if [ -d "${dest}/.git" ]; then
+        say "Found an existing checkout at ${dest} — updating it."
+        if run "git -C '${dest}' pull --ff-only"; then
+            ok "Corvid Skills library updated at ${dest}."
+            hint "Read the guide:  less ${dest}/README.md"
+            return 0
+        fi
+        err "Update failed."
+        return 1
+    fi
+    if run "git clone https://github.com/CamoRageaholic1/corvid-skills '${dest}'"; then
+        ok "Corvid Skills library cloned to ${dest}."
+        say "Curated agent skills, prompts, MCP configs, and templates live here."
+        hint "Start by reading:  less ${dest}/README.md"
+        return 0
+    fi
+    err "Clone failed."
+    return 1
+}
+
+install_all_cli() {
+    header "Install all CLI agents (Claude Code, Codex, Gemini, Aider)"
+    total=0; good=0
+    for fn in install_claude_code install_codex install_gemini install_aider; do
+        total=$((total + 1))
+        if "$fn"; then
+            good=$((good + 1))
+        fi
+    done
+    printf '\n'
+    if [ "$good" -eq "$total" ]; then
+        ok "All ${total} CLI agents installed."
+    else
+        warn "Installed ${good}/${total} CLI agents. Review the messages above for any failures."
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Menu / main loop.
+# ---------------------------------------------------------------------------
+prereq_line() {
+    _line="Prerequisites:"
+    for _t in npm pipx curl git go; do
+        if have "$_t"; then
+            _line="${_line} ${GREEN}${_t}${RESET}"
+        else
+            _line="${_line} ${RED}${_t}(missing)${RESET}"
+        fi
+    done
+    printf '%s\n' "$_line"
+}
+
+print_menu() {
+    clear 2>/dev/null || true
+    cat <<EOF
+${BOLD}${CYAN}==============================================================${RESET}
+${BOLD} Corvid AI Setup -- install AI agents & LLM runtimes${RESET}
+${BOLD}${CYAN}==============================================================${RESET}
+
+  Pick a number to install it. You can install several in a row.
+
+  ${BOLD}CLI coding agents${RESET}
+    1) Claude Code (Anthropic)      npm    -> claude
+    2) OpenAI Codex CLI             npm    -> codex
+    3) Google Gemini CLI            npm    -> gemini
+    4) Aider (AI pair programmer)   pipx   -> aider
+    5) OpenHands (autonomous agent) pipx   -> openhands
+    6) Goose (Block)                script -> goose
+    7) opencode                     script -> opencode
+    8) GitHub Copilot CLI           gh ext -> gh copilot
+
+  ${BOLD}AI IDEs & editors${RESET}
+    9) Cursor (AI IDE)              AppImage -> Cursor.AppImage
+   10) Windsurf (Codeium IDE)       apt      -> windsurf
+   11) VS Code AI extensions        code ext -> Cline + Continue
+
+  ${BOLD}Terminal LLM tools${RESET}
+   12) llm (Simon Willison)         pipx   -> llm
+   13) mods (Charmbracelet)         apt/go -> mods
+   14) shell-gpt (sgpt)             pipx   -> sgpt
+
+  ${BOLD}Local LLM runtimes${RESET}
+   15) Ollama (local LLM runtime)   script   -> ollama run llama3
+   16) LM Studio (local LLM GUI)    AppImage -> LM-Studio.AppImage
+   17) Hermes (Nous Research agent) script   -> hermes
+   18) Jan (offline AI)             AppImage -> Jan.AppImage
+   19) Open WebUI (local chat UI)   pipx     -> open-webui serve
+
+  ${BOLD}Skills & tools${RESET}
+   20) fabric (AI patterns library) go     -> fabric -p <pattern>
+   21) Popular MCP servers          npm    -> claude mcp add ...
+   22) Corvid Skills library        git    -> ~/corvid-skills
+
+  ${BOLD}Convenience${RESET}
+   23) Install ALL CLI agents (1-4)
+
+    q) Quit
+
+EOF
+    prereq_line
+    printf '\n'
+}
+
+main() {
+    while true; do
+        print_menu
+        printf '%s' "${BOLD}corvid-ai>${RESET} Choose [1-23, q]: "
+        if ! read -r choice; then
+            printf '\n'
+            break
+        fi
+        # trim surrounding whitespace
+        choice="$(printf '%s' "$choice" | tr -d '[:space:]')"
+        case "$choice" in
+            1)  install_claude_code;  pause ;;
+            2)  install_codex;        pause ;;
+            3)  install_gemini;       pause ;;
+            4)  install_aider;        pause ;;
+            5)  install_openhands;    pause ;;
+            6)  install_goose;        pause ;;
+            7)  install_opencode;     pause ;;
+            8)  install_copilot_cli;  pause ;;
+            9)  install_cursor;       pause ;;
+            10) install_windsurf;     pause ;;
+            11) install_vscode_ai_ext; pause ;;
+            12) install_llm;          pause ;;
+            13) install_mods;         pause ;;
+            14) install_shell_gpt;    pause ;;
+            15) install_ollama;       pause ;;
+            16) install_lmstudio;     pause ;;
+            17) install_hermes;       pause ;;
+            18) install_jan;          pause ;;
+            19) install_open_webui;   pause ;;
+            20) install_fabric;       pause ;;
+            21) install_mcp_servers;  pause ;;
+            22) install_corvid_skills; pause ;;
+            23) install_all_cli;      pause ;;
+            q|Q|quit|exit) say "Bye."; break ;;
+            "") : ;;  # empty input: redraw
+            *) warn "Unknown choice: '${choice}'"; pause ;;
+        esac
+    done
+}
+
+main "$@"

@@ -82,8 +82,5 @@ plasma-discover-backend-flatpak
 # built around the PPA package name `firefox`).
 firefox
 
-# English UI language pack for the PPA Firefox build. Also a snap-transition
-# stub in stock Ubuntu, but mozillateam.pref.chroot's `firefox*` glob pins it
-# to the PPA .deb the same way as the browser itself. Add more firefox-l10n-*
-# here if the image needs additional locales.
-firefox-l10n-en
+# The mozillateam PPA firefox package bundles the English UI; there is no
+# separate firefox-l10n-en. Add firefox-esr-locale-<xx> here for other locales.

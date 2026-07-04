@@ -72,7 +72,8 @@ podman
 buildah
 skopeo
 distrobox
-uidmap                # newuidmap/newgidmap — required for rootless podman/distrobox
+# uidmap provides newuidmap/newgidmap, required for rootless podman/distrobox
+uidmap
 fuse-overlayfs
 slirp4netns
 
@@ -90,7 +91,8 @@ curl
 wget
 ca-certificates
 gnupg
-apt-transport-https        # for the Microsoft VS Code https repo added in hook 0400
+# apt-transport-https is used by the VS Code https repo added in hook 0400
+apt-transport-https
 software-properties-common
 unzip
 zip
