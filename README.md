@@ -115,7 +115,7 @@ are clean and repeatable. Full detail is in [`docs/ARCHITECTURE.md`](docs/ARCHIT
 Published images and checksums:
 
 - **GitHub Releases:** [github.com/CamoRageaholic1/corvid-os/releases](https://github.com/CamoRageaholic1/corvid-os/releases)
-- **Download (Google Drive):** `corvid-amd64.iso` (amd64, ~5.0 GB, UEFI) in the [CORVID OS folder](https://drive.google.com/drive/folders/1Ji46vTjchlES9AFR5WtHrAMTgDnzU_Ed)
+- **Download (Google Drive):** [`corvid-amd64.iso`](https://drive.google.com/file/d/1R9s2XHJ6cuEqSAGcUAoJRutk2FkR7C6k/view) (amd64, 5.39 GB, UEFI)
 
 Corvid images are **UEFI-bootable**: copy the `.iso` onto a Ventoy stick (no
 flashing needed) or write it to a USB drive, and boot the target in UEFI mode.
