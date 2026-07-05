@@ -1,0 +1,230 @@
+# ============================================================================
+# security.list  --  Corvid OS arm64 / Pi 5  curated security / pentest catalog
+# ----------------------------------------------------------------------------
+# Plain package list for the Pi build (provisioning/build-pi5.sh feeds it to
+# `apt install` on the arm64 rootfs). RULES for this file (do not break them):
+#   * ONE package per line.
+#   * '#' comments must be on their OWN line. A trailing "pkg  # note" would be
+#     passed to apt verbatim and break the install, so every comment here is a
+#     full line starting with #.
+#
+# CURATION APPROACH (why this list looks the way it does)
+# ----------------------------------------------------------------------------
+# This is the ARM analog of the amd64 config/package-lists/security.list.chroot.
+# The base is Ubuntu 24.04 LTS (noble) arm64 + kubuntu-desktop. Ubuntu builds
+# its `universe` component for arm64, and the VAST MAJORITY of these tools are
+# C, Python, Perl, Ruby, or Go programs that Ubuntu compiles for arm64 exactly
+# as it does for amd64. So the curated list ports 1:1 -- the same ~84 tools,
+# same categories, installed from the pinned Ubuntu base, NOT from Kali.
+#
+# KALI-ONLY TOOLS ARE NOT BAKED IN HERE (identical policy to amd64).
+# ----------------------------------------------------------------------------
+# Well-known tools Ubuntu does NOT package (metasploit-framework, seclists,
+# exploitdb/searchsploit, the social-engineer-toolkit, crackmapexec/netexec,
+# responder, wpscan, sslyze, theHarvester, enum4linux, feroxbuster,
+# volatility3, and other Kali-exclusives) are deliberately LEFT OUT of this
+# build. On arm64 they are offered on-demand by the RUNTIME INSTALLER, which
+# pulls them from the low-priority, pinned KALI arm64 fallback repo. That repo,
+# its keyring, and its pin are the SAME dormant runtime fallback the amd64 image
+# ships (config/hooks/0900-kali-runtime-repo.chroot +
+# config/includes.chroot/etc/apt/keyrings/kali-archive-keyring.gpg), except the
+# arm64 build sources Kali's arm64 packages. See the "KALI arm64 FALLBACK"
+# catalog at the bottom of this file for the known names.
+# ============================================================================
+
+
+# ============================================================================
+# Network discovery & scanning
+# ============================================================================
+nmap
+masscan
+netdiscover
+arp-scan
+fping
+hping3
+netcat-openbsd
+socat
+tcpdump
+p0f
+netsniff-ng
+
+# ============================================================================
+# DNS enumeration & host/OSINT recon
+# ============================================================================
+# dnsutils is the familiar transitional name; bind9-dnsutils is the concrete
+# package that ships dig/nslookup/host in noble. Both are kept for safety.
+dnsutils
+bind9-dnsutils
+whois
+dnsrecon
+dnsenum
+fierce
+dmitry
+
+# ============================================================================
+# Web application testing
+# ============================================================================
+nikto
+sqlmap
+wfuzz
+dirb
+dirsearch
+gobuster
+ffuf
+whatweb
+wapiti
+wafw00f
+cadaver
+
+# ============================================================================
+# Password attacks & hash cracking
+# ============================================================================
+john
+# hashcat: the arm64 package installs and runs fine, but a Pi 5 has no practical
+# OpenCL GPU backend, so cracking falls back to the CPU (much slower than a
+# desktop GPU). This is a PERFORMANCE note, not an availability gap -- the
+# package is genuinely arm64, so it stays in the baked-in set.
+hashcat
+hydra
+medusa
+ncrack
+patator
+hashid
+crunch
+cewl
+ophcrack
+chntpw
+
+# ============================================================================
+# Wireless auditing (802.11 / WPS)
+# ============================================================================
+reaver
+pixiewps
+hcxtools
+hcxdumptool
+macchanger
+hostapd
+
+# ============================================================================
+# Sniffing, spoofing & MITM
+# ============================================================================
+wireshark
+tshark
+ettercap-graphical
+bettercap
+dsniff
+tcpflow
+driftnet
+arpwatch
+yersinia
+
+# ============================================================================
+# SMB / SNMP / network-service enumeration
+# ============================================================================
+smbclient
+smbmap
+snmp
+onesixtyone
+nbtscan
+ldap-utils
+
+# ============================================================================
+# Forensics, steganography & file recovery
+# ============================================================================
+sleuthkit
+autopsy
+foremost
+scalpel
+testdisk
+binwalk
+steghide
+libimage-exiftool-perl
+
+# ============================================================================
+# Reverse engineering & debugging
+# ============================================================================
+radare2
+gdb
+ltrace
+strace
+checksec
+
+# ============================================================================
+# Anonymity, proxying & tunneling
+# ============================================================================
+tor
+torsocks
+proxychains4
+stunnel4
+openvpn
+wireguard-tools
+
+
+# ============================================================================
+# arm64-unavailable, covered by the Kali arm64 runtime fallback
+# ----------------------------------------------------------------------------
+# NONE of the curated Ubuntu tools above needed to be moved here. Every package
+# in this list is built for arm64 in Ubuntu noble (main/universe), so the amd64
+# catalog ports to the Pi 1:1. This section is kept as an explicit landing spot:
+# if the build's dry-run against the real arm64 apt cache ever reports a package
+# as "not built for arm64", MOVE it below this line (do not delete it) and let
+# the Kali arm64 runtime fallback supply it at runtime instead, e.g.:
+#     sudo apt update
+#     sudo apt install -t kali-rolling <tool>
+#   aircrack-ng   (dropped from Ubuntu 24.04 arm64; Kali arm64 carries it)
+#   bully         (Kali-only WPS attack tool)
+#   mdk4          (Kali-only wifi tool)
+#   wifite        (depends on aircrack-ng; get it from Kali arm64 at runtime)
+
+
+# ============================================================================
+# KALI arm64 FALLBACK CATALOG  (NOT installed by this list -- reference only)
+# ----------------------------------------------------------------------------
+# The names below are the well-known Kali-exclusive tools that are NOT in
+# Ubuntu noble. Do NOT uncomment them here -- baking Kali packages into the
+# image risks library skew against the Ubuntu base. Install them at RUNTIME
+# from the pinned, dormant Kali arm64 fallback repo instead:
+#     sudo apt update
+#     sudo apt install -t kali-rolling metasploit-framework
+# apt resolves them from Kali arm64 (pinned low) while every core lib stays on
+# Ubuntu. Kali maintains strong arm64 coverage, so these resolve on the Pi.
+#
+# Exploitation / frameworks:
+#   metasploit-framework
+#   exploitdb                 # provides searchsploit; not in noble
+#   set                       # social-engineer-toolkit
+#   beef-xss
+#   commix
+#
+# Credential / AD / SMB attack:
+#   crackmapexec              # a.k.a. netexec on newer Kali
+#   responder
+#   enum4linux
+#
+# Web:
+#   wpscan
+#   feroxbuster
+#   skipfish
+#
+# Recon / OSINT (upstream Go/py tools Ubuntu does not package):
+#   theharvester
+#   amass
+#   subfinder
+#   nuclei
+#
+# TLS / crypto analysis:
+#   sslyze
+#
+# Wireless / RF:
+#   kismet
+#
+# Forensics / memory:
+#   volatility3
+#   bulk-extractor
+#
+# Wordlists / payloads:
+#   seclists
+#   wordlists                 # Kali metapackage; no Ubuntu equivalent
+#   nishang
+#   powersploit
+# ============================================================================

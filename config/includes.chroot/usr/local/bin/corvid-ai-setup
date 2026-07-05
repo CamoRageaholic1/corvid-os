@@ -24,6 +24,17 @@
 set -u
 
 # ---------------------------------------------------------------------------
+# Architecture detection.
+# ---------------------------------------------------------------------------
+# Corvid ships an amd64 image and an arm64 / Raspberry Pi 5 image from the SAME
+# installer script. A few upstreams publish NO 64-bit ARM Linux build (LM Studio,
+# Cursor, Windsurf, Jan — all x86-only desktop apps). On arm64 those menu entries
+# must decline cleanly instead of downloading an x86 binary that cannot run.
+# CORVID_ARCH is the dpkg architecture ("amd64" / "arm64") when dpkg is present,
+# falling back to `uname -m` ("x86_64" / "aarch64") on non-dpkg systems.
+CORVID_ARCH="$(dpkg --print-architecture 2>/dev/null || uname -m)"
+
+# ---------------------------------------------------------------------------
 # Colors — light touch, graceful degradation.
 # ---------------------------------------------------------------------------
 if [ -t 1 ] && command -v tput >/dev/null 2>&1 && [ "$(tput colors 2>/dev/null || echo 0)" -ge 8 ] 2>/dev/null; then
@@ -46,6 +57,32 @@ hint()   { printf '%s\n' "${CYAN}  ->${RESET} $*"; }
 header() { printf '\n%s\n' "${BOLD}== $* ==${RESET}"; }
 
 have()   { command -v "$1" >/dev/null 2>&1; }
+
+# is_arm64 — true when running on 64-bit ARM (Raspberry Pi 5 / arm64 Linux).
+# Matches both the dpkg name ("arm64") and the uname name ("aarch64") so it works
+# whether CORVID_ARCH came from dpkg or the uname fallback. Always false on the
+# amd64 image, so every arm64 gate below is a no-op there — amd64 behavior is
+# byte-for-byte unchanged.
+is_arm64() {
+    case "${CORVID_ARCH}" in
+        arm64|aarch64) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# not_on_arm64 NAME — uniform "no arm64 Linux build" notice. Used by the handful
+# of installers whose upstream ships only an x86 desktop binary. Prints why, points
+# at arm64-native alternatives already in this menu, and returns non-zero so the
+# caller drops straight back to the menu without attempting a broken install.
+not_on_arm64() {
+    _tool="$1"
+    err "${_tool} is not available on arm64 Linux (x86-only upstream)."
+    say "  Its vendor publishes no 64-bit ARM Linux build, so there is nothing to"
+    say "  install on a Raspberry Pi 5 / arm64 system."
+    hint "arm64-native alternatives in this menu: Ollama (15), Open WebUI (19),"
+    hint "VS Code AI extensions (11), or any of the CLI coding agents (1-8)."
+    return 1
+}
 
 # need CMD [advice] — returns non-zero and warns if CMD is missing.
 need() {
@@ -173,6 +210,11 @@ install_ollama() {
 
 install_lmstudio() {
     header "LM Studio (local LLM GUI)"
+    # LM Studio's Linux desktop app is an x86-64 AppImage only; no arm64 build.
+    if is_arm64; then
+        not_on_arm64 "LM Studio"
+        return 1
+    fi
     need curl "Install it with:  sudo apt install curl" || return 1
 
     # LM Studio ships the desktop app as a Linux AppImage. Their documented
@@ -296,6 +338,11 @@ install_copilot_cli() {
 
 install_cursor() {
     header "Cursor (AI-first IDE)"
+    # Cursor ships Linux as an x86-64 AppImage only; there is no arm64 build.
+    if is_arm64; then
+        not_on_arm64 "Cursor"
+        return 1
+    fi
     need curl "Install it with:  sudo apt install curl" || return 1
 
     dest_dir="${HOME}/.local/bin"
@@ -338,6 +385,11 @@ install_cursor() {
 
 install_windsurf() {
     header "Windsurf (Codeium's AI IDE)"
+    # Windsurf's apt repo and tarball are amd64-only; there is no arm64 Linux build.
+    if is_arm64; then
+        not_on_arm64 "Windsurf"
+        return 1
+    fi
     need curl "Install it with:  sudo apt install curl" || return 1
 
     if have apt-get && have sudo; then
@@ -454,6 +506,13 @@ install_shell_gpt() {
 
 install_jan() {
     header "Jan (offline AI assistant)"
+    # Jan's Linux releases are x86-64 only (amd64 .deb + x86_64 AppImage); the
+    # project publishes no arm64 Linux desktop build. Grabbing the x86_64 AppImage
+    # on a Pi would download a binary that cannot run, so decline on arm64.
+    if is_arm64; then
+        not_on_arm64 "Jan"
+        return 1
+    fi
     need curl "Install it with:  sudo apt install curl" || return 1
 
     dest_dir="${HOME}/.local/bin"

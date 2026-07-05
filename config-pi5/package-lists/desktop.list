@@ -1,0 +1,37 @@
+# ============================================================================
+# desktop.list  --  Corvid OS arm64 / Raspberry Pi 5  DESKTOP layer
+# ----------------------------------------------------------------------------
+# Plain package list for the Pi build (provisioning/build-pi5.sh feeds it to
+# `apt install` on the arm64 rootfs). RULES for this file:
+#   * ONE package per line.
+#   * '#' comments live on their OWN line. No trailing inline comments.
+#
+# arm64 note: this is the ARM analog of the amd64
+# config/package-lists/desktop.list.chroot. The amd64 file carries a long
+# belt-and-suspenders list of individual KDE apps. On the Pi we keep it MINIMAL
+# on purpose: `kubuntu-desktop` is a metapackage that already pulls Plasma,
+# SDDM, NetworkManager + plasma-nm, the core KDE apps (Dolphin, Konsole, Kate,
+# Discover), PipeWire audio, fonts, and sane desktop defaults. All of those are
+# arch-independent and ship for arm64 in Ubuntu noble, so naming them again here
+# buys nothing on the Pi and only lengthens the install.
+#
+# `sddm` is listed explicitly as a guard: kubuntu-desktop only Recommends a
+# display manager, and we want a deterministic login manager on the image.
+# ============================================================================
+
+# --- Full Kubuntu Plasma desktop (Plasma + SDDM + KDE apps), arm64 -----------
+kubuntu-desktop
+
+# --- Display manager, pinned explicitly so the image always has one ----------
+sddm
+
+# ----------------------------------------------------------------------------
+# Deliberately NOT expanded here (unlike the amd64 desktop list):
+#   * Individual KDE apps (dolphin, konsole, kate, ark, gwenview, okular,
+#     kde-spectacle, ...) -- all pulled by kubuntu-desktop on arm64.
+#   * Fonts (fonts-noto, fonts-firacode, ...) -- pulled by kubuntu-desktop.
+#   * A web browser. The amd64 image swaps the snap `firefox` stub for the
+#     mozillateam PPA .deb via config/archives. On the Pi, kubuntu-desktop's
+#     browser is fine for a minimal image; if the snap stub is undesirable,
+#     port the mozillateam archive pin the same way the amd64 tree does.
+# ----------------------------------------------------------------------------
