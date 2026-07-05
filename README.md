@@ -115,12 +115,19 @@ are clean and repeatable. Full detail is in [`docs/ARCHITECTURE.md`](docs/ARCHIT
 Published images and checksums:
 
 - **GitHub Releases:** [github.com/CamoRageaholic1/corvid-os/releases](https://github.com/CamoRageaholic1/corvid-os/releases)
-- **Download (Google Drive):** [`corvid-amd64.iso`](https://drive.google.com/file/d/1R9s2XHJ6cuEqSAGcUAoJRutk2FkR7C6k/view) (amd64, 5.39 GB, UEFI)
+- **amd64 (UEFI):** [`corvid-amd64.iso`](https://drive.google.com/file/d/1R9s2XHJ6cuEqSAGcUAoJRutk2FkR7C6k/view) (5.39 GB)
+- **Raspberry Pi 5 / arm64 (beta):** `corvid-pi5-arm64.img.xz` (3.0 GB) in the [CORVID OS folder](https://drive.google.com/drive/folders/1Ji46vTjchlES9AFR5WtHrAMTgDnzU_Ed)
 
-Corvid images are **UEFI-bootable**: copy the `.iso` onto a Ventoy stick (no
-flashing needed) or write it to a USB drive, and boot the target in UEFI mode.
-Verify the download with `shasum -a 256 corvid-amd64.iso`. It should print
+**amd64** is UEFI-bootable: copy the `.iso` onto a Ventoy stick (no flashing
+needed) or write it to a USB drive, and boot the target in UEFI mode. Verify with
+`shasum -a 256 corvid-amd64.iso`; it should print
 `7970c43277634016354e06d9a4de1fe08b26b824e645996d73783778b4ed8beb`.
+
+**Raspberry Pi 5** is a beta: it is build-validated but not yet confirmed on
+hardware, so field feedback is welcome. Flash `corvid-pi5-arm64.img.xz` to an SD
+card or USB with Raspberry Pi Imager (choose "Use custom") and boot a Pi 5.
+Verify with `shasum -a 256 corvid-pi5-arm64.img.xz`; it should print
+`5d01ec0d678b253e034ebd612887f511382dfde36c3f6231428568c4cd2704de`.
 
 ## Build quickstart
 

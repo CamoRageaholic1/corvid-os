@@ -141,9 +141,11 @@ shipped. It slots into the `config/bootloaders/` directory the SPEC reserves
 
 ## 2. arm64 / Raspberry Pi 5 variant (v1.1)
 
-**Status: planned for v1.1. Not blocking the amd64 v1.0 ISO.** (Build config lives
-in the `arm64/` directory. Summarized here so the whole roadmap lives in one
-place.)
+**Status: BETA SHIPPED as `v1.1.0-pi5-beta`.** The image is build-validated (it
+builds cleanly with the Pi 5 boot chain, KDE Plasma, all 80 curated arm64 tools,
+the AI installer, the Kali arm64 runtime fallback, and the dev stack); a hardware
+boot-test on a real Pi 5 via early testers is pending. Build config lives in
+`arm64/`, `config-pi5/`, and `provisioning/build-pi5.sh`; see `docs/BUILD-PI5.md`.
 
 The important architecture fact, restated from the SPEC so it does not get lost:
 both builds use the same "curated Ubuntu toolset plus a pinned Kali fallback"
@@ -159,10 +161,10 @@ Consequences to plan for:
 - The APT pinning file for arm64 pins Kali's **arm64** repo as the low-priority
   fallback source, using the same "base wins, fallback tools pulled explicitly"
   logic the amd64 pinning uses.
-- AnonSurf on arm64: AnonSurf is grafted from ParrotSec's upstream source on both
-  architectures (it is not in Ubuntu's or Kali's repos). The arm64 open item is
-  confirming that git graft builds cleanly on arm64, or substituting a Kali-native
-  transparent-Tor approach. This is an open item for the v1.1 cycle.
+- AnonSurf (both architectures): the ParrotSec git graft currently fails, because
+  the upstream repo layout changed and no longer ships `bin/anonsurf` where the
+  hook expects it. AnonSurf is therefore NOT installed in the current images. Open
+  item: fix the graft source, or substitute a Kali-native transparent-Tor approach.
 - Secure Boot does not apply the same way on the Pi 5; the Pi uses its own
   bootloader chain, so the MOK section above is amd64/UEFI only.
 
